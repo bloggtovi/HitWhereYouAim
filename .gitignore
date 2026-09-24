@@ -1,0 +1,10 @@
+.vs/
+.vscode/
+build/
+out/
+CMakeUserPresets.json
+compile_commands.json
+*.zip
+*.7z
+*.dll
+*.pdb

@@ -1,0 +1,24 @@
+{
+  "name": "generic-skyrim-skse-plugin",
+  "version-string": "1.0.0",
+  "dependencies": [
+	"vcpkg-cmake-config",
+	"directxmath",
+	"directxtk",
+	"fmt",
+	"nlohmann-json",
+	"rapidcsv",
+	"simpleini",
+	"spdlog",
+	"toml11",
+	"xbyak",
+    {
+      "name": "commonlib-shared",
+      "features": [
+        "xbyak",
+        "ini"
+      ]
+    },
+	"minhook"
+  ]
+}
