@@ -31,6 +31,16 @@
 			"ENABLE_SKYRIM_AE": "ON",
 			"ENABLE_SKYRIM_VR": "OFF"
 		}
+	},
+	{
+		"inherits": ["windows-vcpkg"],
+		"name": "vs2022-ae",
+		"binaryDir": "${sourceDir}/buildae",
+		"cacheVariables" : {
+			"ENABLE_SKYRIM_SE": "OFF",
+			"ENABLE_SKYRIM_AE": "ON",
+			"ENABLE_SKYRIM_VR": "OFF"
+		}
 	}
   ],
   "buildPresets": [

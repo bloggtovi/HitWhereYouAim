@@ -1,5 +1,6 @@
 #include "PCH.h"
 #include "Version.h"
+#include "Hooks.h"
 
 SKSE_PLUGIN_VERSION = []() {
 	SKSE::PluginVersionData v;
@@ -28,15 +29,22 @@ namespace
 
 SKSEPluginLoad( const SKSE::LoadInterface* a_skse )
 {
-	SKSE::Init( a_skse, { .log = true,
+#ifdef _DEBUG
+	//while( !IsDebuggerPresent() ) Sleep(100);
+#endif
+	SKSE::Init(a_skse, {.log = true,
 		.logName = Version::PROJECT.data(),
 		.trampoline = true,
 		.trampolineSize = 450 } );
+
+	Runtime::version = a_skse->RuntimeVersion();
 
 	if( auto* messaging = SKSE::GetMessagingInterface() )
 	{
 		messaging->RegisterListener( SKSEMessageHandler );
 	}
+
+	Hooks::Install();
 
 	return true;
 }

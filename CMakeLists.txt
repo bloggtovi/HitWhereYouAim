@@ -8,10 +8,10 @@ endif()
 
 message(STATUS "vcpkg overlay ports: ${VCPKG_OVERLAY_PORTS}")
 
-set(PLUGIN_NAME "CommonLibSSE-NG-Template")
-set(PLUGIN_VERSION "0.1.0")
-set(PLUGIN_AUTHOR "Author")
-set(PLUGIN_DESCRIPTION "Plugin description")
+set(PLUGIN_NAME "HitWhereYouAim")
+set(PLUGIN_VERSION "1.0.0")
+set(PLUGIN_AUTHOR "Tossapon")
+set(PLUGIN_DESCRIPTION "A crosshair aim correction plugin")
 
 option(COPY_BUILD "Copy build output to configured plugin directories" OFF)
 option(BUILD_TESTS "Build tests" OFF)
@@ -42,6 +42,7 @@ set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
 add_subdirectory("${COMMONLIB_PATH}" "${CMAKE_BINARY_DIR}/CommonLib")
 
 find_package(commonlib-shared CONFIG REQUIRED)
+find_package(minhook CONFIG REQUIRED)
 
 configure_file(
 	${CMAKE_CURRENT_SOURCE_DIR}/cmake/Version.h.in
@@ -57,11 +58,17 @@ configure_file(
 
 set(sources ${headers}
 	src/PCH.h
+	src/Hooks.h
+	src/Settings.h
+	src/BallisticSolver.h
+	src/Utils.h
 )
 
 set(sources ${sources}
 	src/PCH.cpp
 	src/main.cpp
+	src/Hooks.cpp
+	src/Settings.cpp
 )
 
 source_group(
@@ -91,6 +98,23 @@ add_library(
 	.editorconfig
 )
 
+set(
+	DEBUG_VISUALIZERS
+	${CMAKE_CURRENT_SOURCE_DIR}/debug/CommonLibSSE-NG.natvis
+)
+
+target_sources(
+	${PROJECT_NAME}
+	PRIVATE
+		${DEBUG_VISUALIZERS}
+)
+
+source_group(
+	"Debugger Visualizers"
+	FILES
+		${DEBUG_VISUALIZERS}
+)
+
 target_compile_features(
 	${PROJECT_NAME}
 	PRIVATE
@@ -115,6 +139,7 @@ target_link_libraries(
 	PRIVATE
 	CommonLibSSE::CommonLibSSE
 	commonlib-shared::commonlib-shared
+	minhook::minhook
 )
 
 target_precompile_headers(
@@ -152,9 +177,9 @@ if(COPY_BUILD)
 	else()
 		foreach(TARGET_DIR IN LISTS SKYRIM_PLUGIN_TARGETS)
 			add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-				COMMAND ${CMAKE_COMMAND} -E make_directory "${TARGET_DIR}"
-				COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:${PROJECT_NAME}>" "${TARGET_DIR}/"
-				COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_PDB_FILE:${PROJECT_NAME}>" "${TARGET_DIR}/"
+				COMMAND ${CMAKE_COMMAND} -E make_directory "${TARGET_DIR}/SKSE/Plugins/"
+				COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:${PROJECT_NAME}>" "${TARGET_DIR}/SKSE/Plugins/"
+				COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_PDB_FILE:${PROJECT_NAME}>" "${TARGET_DIR}/SKSE/Plugins/"
 			)
 		endforeach()
 	endif()

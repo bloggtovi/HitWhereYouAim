@@ -1,6 +1,7 @@
 .vs/
 .vscode/
 build/
+buildae/
 out/
 CMakeUserPresets.json
 compile_commands.json

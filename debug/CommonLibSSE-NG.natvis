@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+  <Type Name="RE::CombatController">
+    <DisplayString>CombatController</DisplayString>
+    <Expand>
+      <Synthetic Name="AE (1.6.629+)">
+        <Expand>
+          <Item Name="combatGroup">*(RE::CombatGroup **)((char*)this+0x00)</Item>
+          <Item Name="state">*(RE::CombatState **)((char*)this+0x08)</Item>
+          <Item Name="inventory">*(RE::CombatInventory **)((char*)this+0x10)</Item>
+          <Item Name="blackboard">*(RE::CombatBlackboard **)((char*)this+0x18)</Item>
+          <Item Name="behaviorController">*(RE::CombatBehaviorController **)((char*)this+0x20)</Item>
+          <Item Name="attackerHandle">*(RE::BSPointerHandle&lt;RE::Actor,RE::BSUntypedPointerHandle&lt;21,5&gt; &gt;*)((char*)this+0x28)</Item>
+          <Item Name="targetHandle">*(RE::BSPointerHandle&lt;RE::Actor,RE::BSUntypedPointerHandle&lt;21,5&gt; &gt;*)((char*)this+0x2C)</Item>
+          <Item Name="previousTargetHandle">*(RE::BSPointerHandle&lt;RE::Actor,RE::BSUntypedPointerHandle&lt;21,5&gt; &gt;*)((char*)this+0x30)</Item>
+          <Item Name="stance">*(RE::CombatController::COMBAT_STANCE*)((char*)this+0x34)</Item>
+          <Item Name="startedCombat">*(bool*)((char*)this+0x35)</Item>
+          <Item Name="unk36">*(unsigned char*)((char*)this+0x36)</Item>
+          <Item Name="unk37">*(unsigned char*)((char*)this+0x37)</Item>
+          <Item Name="combatStyle">*(RE::TESCombatStyle **)((char*)this+0x38)</Item>
+          <Item Name="stoppedCombat">*(bool*)((char*)this+0x40)</Item>
+          <Item Name="unk41">*(bool*)((char*)this+0x41)</Item>
+          <Item Name="ignoringCombat">*(bool*)((char*)this+0x42)</Item>
+          <Item Name="inactive">*(bool*)((char*)this+0x43)</Item>
+          <Item Name="unk44">*(RE::AITimer*)((char*)this+0x44)</Item>
+          <Item Name="lowMovementDelta">*(float*)((char*)this+0x4C)</Item>
+          <Item Name="aimControllers">*(RE::BSTArray&lt;RE::CombatAimController *,RE::BSTArrayHeapAllocator&gt;*)((char*)this+0x50)</Item>
+          <Item Name="aimControllerLock">*(RE::BSSpinLock*)((char*)this+0x68)</Item>
+          <Item Name="currentAimController">*(RE::CombatAimController **)((char*)this+0x70)</Item>
+          <Item Name="previousAimController">*(RE::CombatAimController **)((char*)this+0x78)</Item>
+          <Item Name="areas" Optional="true">*(RE::BSTArray&lt;RE::CombatAreaStandard *,RE::BSTArrayHeapAllocator&gt;*)((char*)this+0x80)</Item>
+          <Item Name="currentArea" Optional="true">*(RE::CombatAreaStandard **)((char*)this+0x98)</Item>
+          <Item Name="targetSelectors" Optional="true">*(RE::BSTArray&lt;RE::CombatTargetSelectorStandard *,RE::BSTArrayHeapAllocator&gt;*)((char*)this+0xA0)</Item>
+          <Item Name="currentTargetSelector" Optional="true">(void*)((char*)this+0xB8)</Item>
+          <Item Name="previousTargetSelector" Optional="true">(void*)((char*)this+0xC0)</Item>
+          <Item Name="handleCount">*(unsigned int*)((char*)this+0xC8)</Item>
+          <Item Name="unkCC">*(int*)((char*)this+0xCC)</Item>
+          <Item Name="cachedAttacker">*(RE::NiPointer&lt;RE::Actor&gt;*)((char*)this+0xD0)</Item>
+          <Item Name="cachedTarget">*(RE::NiPointer&lt;RE::Actor&gt;*)((char*)this+0xD8)</Item>
+        </Expand>
+      </Synthetic>
+    </Expand>
+  </Type>
+  <Type Name="RE::PlayerCharacter">
+    <DisplayString>
+      PlayerCharacter
+    </DisplayString>
+
+    <Expand>
+      <Item Name="[Player Runtime Data 1.6.629+]" Optional="true">
+        *(RE::PlayerCharacter::PLAYER_RUNTIME_DATA*)((char*)this + 0x3E0)
+      </Item>
+      <Item Name="[Player Runtime Data 1.7.99+]" Optional="true">
+        *(RE::PlayerCharacter::PLAYER_RUNTIME_DATA*)((char*)this + 0x3E8)
+      </Item>
+      <Item Name="[Info Runtime Data]" Optional="true">
+        *(RE::PlayerCharacter::INFO_RUNTIME_DATA*)((char*)this + 0x8EC)
+      </Item>
+    </Expand>
+  </Type>
+  <Type Name="RE::PlayerCamera">
+    <DisplayString>PlayerCamera target={cameraTarget}, state={currentState._ptr}</DisplayString>
+    <Expand>
+      <!-- Direct and inherited subobjects -->
+      <Item Name="[TESCamera]" Optional="true">*(RE::TESCamera*)this</Item>
+      <Item Name="[BSTSingletonSDM&lt;PlayerCamera&gt;]" Optional="true">*(RE::BSTSingletonSDM&lt;RE::PlayerCamera&gt;*)this</Item>
+
+      <!-- PlayerCamera fixed members -->
+      <Item Name="pad039" Optional="true">pad039</Item>
+      <Item Name="pad03A" Optional="true">pad03A</Item>
+      <Item Name="cameraTarget" Optional="true">cameraTarget</Item>
+
+      <!-- Versioned synthetic runtime data -->
+      <Item Name="[SE/AE] RUNTIME_DATA (+0x40)" Optional="true">*(RE::PlayerCamera::RUNTIME_DATA*)((unsigned char*)this + 0x40)</Item>
+      <Item Name="[SE/AE] RUNTIME_DATA2 (+0x13C)" Optional="true">*(RE::PlayerCamera::RUNTIME_DATA2*)((unsigned char*)this + 0x13C)</Item>
+      <Item Name="[VR] VR_RUNTIME_DATA (+0x40)" Optional="true">*(RE::PlayerCamera::VR_RUNTIME_DATA*)((unsigned char*)this + 0x40)</Item>
+      <Item Name="[VR] RUNTIME_DATA2 (+0x158)" Optional="true">*(RE::PlayerCamera::RUNTIME_DATA2*)((unsigned char*)this + 0x158)</Item>
+
+      <!-- Commonly inspected inherited TESCamera fields, surfaced at top level -->
+      <Item Name="rotationInput" Optional="true">((RE::TESCamera*)this)-&gt;rotationInput</Item>
+      <Item Name="translationInput" Optional="true">((RE::TESCamera*)this)-&gt;translationInput</Item>
+      <Item Name="zoomInput" Optional="true">((RE::TESCamera*)this)-&gt;zoomInput</Item>
+      <Item Name="cameraRoot" Optional="true">((RE::TESCamera*)this)-&gt;cameraRoot</Item>
+      <Item Name="currentState" Optional="true">((RE::TESCamera*)this)-&gt;currentState</Item>
+      <Item Name="enabled" Optional="true">((RE::TESCamera*)this)-&gt;enabled</Item>
+      <Item Name="pad31" Optional="true">((RE::TESCamera*)this)-&gt;pad31</Item>
+      <Item Name="pad32" Optional="true">((RE::TESCamera*)this)-&gt;pad32</Item>
+      <Item Name="pad34" Optional="true">((RE::TESCamera*)this)-&gt;pad34</Item>
+    </Expand>
+  </Type>
+  <!-- Explicit inheritance view for TESCamera itself. -->
+  <Type Name="RE::TESCamera">
+    <DisplayString>TESCamera state={currentState._ptr}, enabled={enabled}</DisplayString>
+    <Expand>
+      <Item Name="rotationInput" Optional="true">rotationInput</Item>
+      <Item Name="translationInput" Optional="true">translationInput</Item>
+      <Item Name="zoomInput" Optional="true">zoomInput</Item>
+      <Item Name="cameraRoot" Optional="true">cameraRoot</Item>
+      <Item Name="currentState" Optional="true">currentState</Item>
+      <Item Name="enabled" Optional="true">enabled</Item>
+      <Item Name="pad31" Optional="true">pad31</Item>
+      <Item Name="pad32" Optional="true">pad32</Item>
+      <Item Name="pad34" Optional="true">pad34</Item>
+    </Expand>
+  </Type>
+</AutoVisualizer>
