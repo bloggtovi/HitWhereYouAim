@@ -98,7 +98,6 @@ static bool CalculateProjectileAngles( const RE::NiPoint3& a_origin, const RE::N
 		return false;
 
 	float horizontal = sqrt( horizontalSquared );
-
 	a_angleX =	-atan2( delta.z, horizontal );
 
 	if( horizontalSquared > 0.000001f )
@@ -232,18 +231,17 @@ static void ProjectBoundToScreen( const RE::NiCamera* a_camera, const RE::NiBoun
 	func( a_camera, a_bound, out_projectedMin, out_projectedMax, a_nearThreshold );
 }
 
-static RE::TESObjectREFR* GetPotentialPlayerTarget( float a_distance, RE::Projectile* a_projectile = nullptr )
+static std::pair<RE::TESObjectREFR*,RE::NiPoint3> GetPotentialPlayerTarget( float a_distance, RE::Projectile* a_projectile = nullptr, float a_xLimit = 0.5f, float a_yLimit = 0.5f )
 {
 	auto processLists = RE::ProcessLists::GetSingleton();
 	auto player = RE::PlayerCharacter::GetSingleton();
 	float distanceSquared = a_distance * a_distance;
-	float maxHScore = 1.0f;
-	float maxVScore = 1.0f;
-	float xLimit = 0.8f;
-	float yLimit = 0.8f;
+	float bestHScore = 1.0f;
+	float bestVScore = 1.0f;
 	float projectileSpeed = a_projectile ? a_projectile->GetSpeed() : 0;
 	RE::NiCamera* camera = RE::Main::WorldRootCamera();
 	RE::Actor* targetCandidate = nullptr;
+	RE::NiPoint3 targetMoveDelta{ 0, 0, 0 };
 	for( auto highHandle : processLists->highActorHandles )
 	{
 		if( auto highActor = highHandle.get() )
@@ -267,7 +265,11 @@ static RE::TESObjectREFR* GetPotentialPlayerTarget( float a_distance, RE::Projec
 			if( actorDistanceSquared > distanceSquared )
 				continue;
 
+			if( highActor->IsPlayerTeammate() )
+				continue;
+
 			RE::NiBound bound = actor3D->worldBound;
+			RE::NiPoint3 moveDelta{ 0, 0, 0 };
 
 			// Predict future position before projecting onto the screen
 			if( projectileSpeed > 0 )
@@ -279,8 +281,10 @@ static RE::TESObjectREFR* GetPotentialPlayerTarget( float a_distance, RE::Projec
 				float	ttr = CalculateProjectileFlightTimeToTarget( player->GetPosition(), bound.center					, projectileSpeed );
 						ttr = CalculateProjectileFlightTimeToTarget( player->GetPosition(), bound.center + velocity * ttr	, projectileSpeed );
 
-				bound.center += velocity * ttr;
+				moveDelta = velocity * ttr;
 			}
+
+			bound.center += moveDelta;
 
 			RE::NiPoint3 projectedYMin,projectedYMax;
 			ProjectBoundToScreen( camera, bound, projectedYMin, projectedYMax, 0 );
@@ -291,34 +295,151 @@ static RE::TESObjectREFR* GetPotentialPlayerTarget( float a_distance, RE::Projec
 
 			float hScore = abs( projectedXMin.x + projectedXMax.x );
 			float vScore = abs( projectedYMin.y + projectedYMax.y );
-			if( hScore >= maxHScore && vScore >= maxVScore )
+			if( hScore >= bestHScore && vScore >= bestVScore )
 				continue;
 
 			if( projectedXMin.x == -1.0F && projectedXMax.x == 1.0F )
 				continue;
-			if( projectedXMax.x < -xLimit || projectedXMin.x > xLimit )
+			if( projectedXMax.x < -a_xLimit || projectedXMin.x > a_xLimit )
 				continue;
 
 			if( projectedYMin.y == -1.0F && projectedYMax.y == 1.0F )
 				continue;
-			if( projectedYMax.y < -yLimit || projectedYMin.y > yLimit )
+			if( projectedYMax.y < -a_yLimit || projectedYMin.y > a_yLimit )
 				continue;
 
-			if( highActor->IsPlayerTeammate() )
-				continue;
-
+			// Reject target we can't see
 			auto result = RequestDetectionResult( player, highActor.get(), RE::DETECTION_PRIORITY::kCritical );
 			if( result == 0 )
 				continue;
 
-			maxHScore = hScore;
-			maxVScore = vScore;
+			bestHScore = hScore;
+			bestVScore = vScore;
 
 			targetCandidate = highActor.get();
+			targetMoveDelta = moveDelta;
 		}
 	}
 
-	return targetCandidate;
+	if( targetCandidate )
+		return std::make_pair( targetCandidate, targetCandidate->GetPosition() + targetMoveDelta );
+
+	return std::make_pair( targetCandidate, targetMoveDelta );
+}
+
+static float GetImpactDistanceAheadOfProjectileOrigin(
+	const RE::NiPoint3& a_cameraRayOrigin,
+	const RE::NiPoint3& a_cameraRayEndpoint,
+	const RE::NiPoint3& a_rayImpactPosition,
+	const RE::NiPoint3& a_projectileOrigin )
+{
+	RE::NiPoint3 rayVector = a_cameraRayEndpoint - a_cameraRayOrigin;
+
+	float rayLengthSquared = rayVector.SqrLength();
+
+	if( rayLengthSquared <= 0.000001f )
+		return 0.0f;
+
+	RE::NiPoint3 rayDirection = rayVector / sqrt( rayLengthSquared );
+
+	return ( a_rayImpactPosition - a_projectileOrigin ).Dot( rayDirection );
+}
+
+extern float crosshairOriginalX;
+extern float crosshairOriginalY;
+static bool SetCrosshairPosition( float a_screenX, float a_screenY )
+{
+	auto* ui = RE::UI::GetSingleton();
+	if( !ui )
+		return false;
+
+	auto movie = ui->GetMovieView( RE::HUDMenu::MENU_NAME );
+	if( !movie )
+		return false;
+
+	RE::GViewport viewport;
+	movie->GetViewport( &viewport );
+
+	if( viewport.width <= 0 || viewport.height <= 0 )
+		return false;
+
+	auto frame = movie->GetVisibleFrameRect();
+	float frameWidth = frame.right - frame.left;
+	float frameHeight = frame.bottom - frame.top;
+
+	float viewportCenterX = viewport.left + viewport.width * 0.5f;
+	float viewportCenterY = viewport.top + viewport.height * 0.5f;
+
+	float screenDeltaX = a_screenX - viewportCenterX;
+	float screenDeltaY = a_screenY - viewportCenterY;
+
+	constexpr float crosshairCenterX = 23.2f;
+	constexpr float crosshairCenterY = -115.3f;
+
+	float crosshairX = crosshairCenterX + screenDeltaX * frameWidth / viewport.width;
+	float crosshairY = crosshairCenterY + screenDeltaY * frameHeight / viewport.height;
+
+	RE::GFxValue crosshair;
+	if( !movie->GetVariable(&crosshair, "_root.HUDMovieBaseInstance.CrosshairInstance" ) || !crosshair.IsDisplayObject() )
+		return false;
+
+	RE::GFxValue::DisplayInfo info;
+	if( !crosshair.GetDisplayInfo( &info ) )
+		return false;
+
+	if( crosshairOriginalX == FLT_MAX )
+	{
+		crosshairOriginalX = viewportCenterX + (float)(info.GetX() - crosshairCenterX) * viewport.width / frameWidth;
+		crosshairOriginalY = viewportCenterY + (float)(info.GetY() - crosshairCenterY) * viewport.height / frameHeight;
+	}
+
+	info.SetPosition( crosshairX, crosshairY );
+
+	return crosshair.SetDisplayInfo( info );
+}
+
+static void ResetCrosshairPosition()
+{
+	if( crosshairOriginalX != FLT_MAX )
+	{
+		SetCrosshairPosition( crosshairOriginalX, crosshairOriginalY );
+		crosshairOriginalX = FLT_MAX;
+		crosshairOriginalY = FLT_MAX;
+	}
+}
+
+static bool SetCrosshairToWorldPosition( const RE::NiPoint3& a_world )
+{
+	auto* ui = RE::UI::GetSingleton();
+	auto camera = RE::Main::WorldRootCamera();
+
+	float normalizedX;
+	float normalizedY;
+	float depth;
+
+	if( !RE::NiCamera::WorldPtToScreenPt3(
+		camera->GetRuntimeData().worldToCam,
+		camera->GetRuntimeData2().port,
+		a_world,
+		normalizedX,
+		normalizedY,
+		depth,
+		1.0e-5f ) )
+	{
+		return false;
+	}
+
+	auto movie = ui->GetMovieView( RE::HUDMenu::MENU_NAME );
+	if( !movie )
+		return false;
+
+	RE::GViewport viewport;
+	movie->GetViewport( &viewport );
+
+	float screenX = viewport.left + normalizedX * viewport.width;
+	float screenY = viewport.top + ( 1.0f - normalizedY ) * viewport.height;
+
+	return SetCrosshairPosition( screenX, screenY );
 }
 
 #pragma warning(pop)

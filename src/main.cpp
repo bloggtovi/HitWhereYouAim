@@ -1,6 +1,10 @@
 #include "PCH.h"
 #include "Version.h"
 #include "Hooks.h"
+#include "Settings.h"
+
+float crosshairOriginalX = FLT_MAX;
+float crosshairOriginalY = FLT_MAX;
 
 SKSE_PLUGIN_VERSION = []() {
 	SKSE::PluginVersionData v;
@@ -25,6 +29,26 @@ namespace
 			break;
 		}
 	}
+
+	static void LogToConsole( RE::StaticFunctionTag*, std::string a_str )
+	{
+		RE::ConsoleLog::GetSingleton()->Print( a_str.c_str() );
+	}
+
+	static void ReloadSettings( RE::StaticFunctionTag* )
+	{
+		Settings::Load();
+		ResetCrosshairPosition();
+		REX::DEBUG( "Settings reloaded by MCM" );
+	}
+
+	static bool RegisterFunction( RE::BSScript::IVirtualMachine* a_vm )
+	{
+		a_vm->RegisterFunction( "ReloadSettings", "HitWhereYouAim", ReloadSettings );
+		a_vm->RegisterFunction( "LogToConsole", "HitWhereYouAim", LogToConsole );
+
+		return true;
+	}
 }
 
 SKSEPluginLoad( const SKSE::LoadInterface* a_skse )
@@ -40,11 +64,17 @@ SKSEPluginLoad( const SKSE::LoadInterface* a_skse )
 	Runtime::version = a_skse->RuntimeVersion();
 
 	if( auto* messaging = SKSE::GetMessagingInterface() )
-	{
 		messaging->RegisterListener( SKSEMessageHandler );
-	}
+	else
+		return false;
+
+	if( auto papyrusInterface = SKSE::GetPapyrusInterface() )
+		papyrusInterface->Register( RegisterFunction );
+	else
+		return false;
 
 	Hooks::Install();
+	Settings::Load();
 
 	return true;
 }

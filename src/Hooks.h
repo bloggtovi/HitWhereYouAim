@@ -2,7 +2,18 @@
 
 #include "Utils.h"
 #include "BallisticSolver.h"
+#include "Settings.h"
 
+enum class PitchCorrectionMode
+{
+	kAutomatic,
+	kFixedAngle,
+};
+
+static constexpr float degToRad = std::numbers::pi_v<float> / 180.0f;
+static constexpr float meterToGameUnit = 1.0f / 0.0142875f;
+static RE::NiPoint3 lastRayCoord = {0,0,0};
+static uint32_t rayImpactExpire = 0;
 namespace Hooks
 {
 	struct PlayerProjectileCalculateLaunchAngleHook
@@ -17,103 +28,140 @@ namespace Hooks
 		{
 			func( a_player, a_projectile, a_launchNode, out_yaw, out_pitch, a_origin, a_unk7, a_unk8 ); // SkyrimSE.exe+0x764F10
 			
-			auto playerCamera = RE::PlayerCamera::GetSingleton();
-			auto cameraState = playerCamera->currentState.get();
-			if( cameraState->id == RE::CameraState::kFirstPerson ||
+			auto playerCamera		= RE::PlayerCamera::GetSingleton();
+			auto cameraState		= playerCamera->currentState.get();
+			auto thirdPersonState	= skyrim_cast<RE::ThirdPersonState*>( cameraState );
+			bool isFreeRotation		= thirdPersonState && thirdPersonState->GetFreeRotationMode();
+			if( Settings::bEnabled && !isFreeRotation &&
+				(
+				cameraState->id == RE::CameraState::kFirstPerson ||
 				cameraState->id == RE::CameraState::kThirdPerson ||
-				cameraState->id == RE::CameraState::kMount )
+				cameraState->id == RE::CameraState::kMount
+				))
 			{
-				auto screenSize = RE::BSGraphics::Renderer::GetSingleton()->GetScreenSize();
+				bool isFixedAngle		= Settings::bEnabledPitchCorrection &&
+										 (PitchCorrectionMode)Settings::iPitchCorrectionMode == PitchCorrectionMode::kFixedAngle;
+				bool isAutoPitch		= Settings::bEnabledPitchCorrection &&
+										 (PitchCorrectionMode)Settings::iPitchCorrectionMode == PitchCorrectionMode::kAutomatic;
 
-				float aimZeroDistance = 10000.0f;
+				auto camera				= RE::Main::WorldRootCamera();
+				auto screenSize			= RE::BSGraphics::Renderer::GetSingleton()->GetScreenSize();
+				auto screenHalfWidth	= screenSize.width  / 2;
+				auto screenHalfHeight	= screenSize.height / 2;
+				int32_t crosshairX		= (int32_t)(screenHalfWidth  + ( Settings::fCrosshairPosX * screenHalfWidth ));
+				int32_t crosshairY		= (int32_t)(screenHalfHeight + ( Settings::fCrosshairPosY * screenHalfHeight ));
+				
+				float aimZeroDistance	= Settings::fMaximumTargetDistance * meterToGameUnit;
+				RE::NiPoint3 fireOrigin = a_origin ? *a_origin : a_launchNode->world.translate;
 
 				RE::NiPoint3 aimLocation;
 				RE::bhkPickData pickData;
 				auto target = GetScreenRaycastTarget(
-					screenSize.width / 2,
-					screenSize.height / 2,
+					crosshairX,
+					crosshairY,
 					a_projectile->GetCollisionGroup(),
 					a_projectile->GetProjectileRuntimeData().spell ? RE::COL_LAYER::kSpell : RE::COL_LAYER::kProjectile,
 					&aimLocation,
 					&pickData );
 
-				// Clamp depth to potential target if there is one
-				auto potentialTarget = GetPotentialPlayerTarget( 10000.0f );
-				if( potentialTarget )
+				RE::NiPoint3 rayEnd = ((RE::NiPoint3&)(pickData.rayInput.to.quad.m128_f32) / havokScaling);
+				auto impactDepth = GetImpactDistanceAheadOfProjectileOrigin( camera->world.translate, rayEnd, aimLocation, fireOrigin );
+				REX::DEBUG( "Crosshair impact depth = {}", impactDepth );
+
+				// Cancel launch angle modification if the ray impact is behind the projectile origin
+				if( impactDepth > 0 )
 				{
-					auto shooterPos = a_player->GetPosition();
-					auto potentialPos = potentialTarget->GetPosition();
-					auto projectileSpeed = a_projectile->GetSpeed();
-					float flightTime = CalculateProjectileFlightTimeToTarget( shooterPos, potentialPos, projectileSpeed );
+					if( Settings::bTargetDepthPrediction )
+					{
+						// Clamp depth to potential target if there is one
+						auto [potentialTarget,predictPos] = GetPotentialPlayerTarget( aimZeroDistance, a_projectile, Settings::fPredictionWindowWidth, Settings::fPredictionWindowHeight );
+						if( potentialTarget )
+						{
+							auto predictedDist = (predictPos - a_player->GetPosition()).Length();
+							aimZeroDistance = predictedDist;
 
-					RE::NiPoint3 potentialTargetVelocity;
-					potentialTarget->GetLinearVelocity( potentialTargetVelocity );
+							REX::DEBUG( "Predicted aim target: {}, distance: {}", potentialTarget->GetDisplayFullName(), aimZeroDistance );
+						}
+					}
 
-					auto predictedPos = potentialPos + potentialTargetVelocity * flightTime;
-					auto predictedDist = (predictedPos - shooterPos).Length();
-					aimZeroDistance = predictedDist;
+					aimLocation = ClampVectorFromOrigin( RE::Main::WorldRootCamera()->world.translate, aimLocation, aimZeroDistance );
 
-					REX::DEBUG( "Predicted aim target: {}, distance: {}", potentialTarget->GetDisplayFullName(), aimZeroDistance );
+					// Add ray penetration
+					aimLocation = ExtendVectorFromOrigin( camera->world.translate, aimLocation, Settings::fRayPenetrationDepth * meterToGameUnit );
+
+					RE::NiPoint3 targetVelocity;
+
+					// Get target velocity to calculate intercept
+					if( target )
+					{
+						target->GetLinearVelocity( targetVelocity );
+						auto targetName =  target->GetDisplayFullName();
+						REX::DEBUG( "Project aim correction ray target: {}", targetName ? targetName : "" );
+					}
+
+					bool firingAngleCalculated = false;
+					RE::NiPoint3 predicted;
+					float originalPitch = *out_pitch;
+					float originalYaw = *out_yaw;
+					// Use ballistic solver to solve the aim pitch
+					if( isAutoPitch ||	Settings::bEnabledTargetLeading )
+					{
+						// Zero out the velocity prediction if not needed
+						if( !Settings::bEnabledTargetLeading )
+							targetVelocity = { 0, 0, 0 };
+
+						if( CalculatePredictedProjectileAimPoint(
+							&predicted, &fireOrigin,
+							&aimLocation,
+							&targetVelocity,
+							a_projectile->GetSpeed(),
+							a_projectile->GetGravity() * GetWorldGravity(),
+							false ) )
+						{
+							REX::DEBUG( "Aim assist mode: Skyrim" );
+							aimLocation = predicted;
+						}
+						else // Use custom solver if the Skyrim solver cannot be used
+						{
+							REX::DEBUG( "Aim assist mode: Ballistic Solver" );
+							firingAngleCalculated = SolveBallisticIntercept( 
+								fireOrigin, aimLocation, &targetVelocity, 
+								a_projectile->GetSpeed(), a_projectile->GetGravity() * GetWorldGravity(), 
+								aimLocation, out_pitch, out_yaw );
+						}
+					}
+
+					if( !firingAngleCalculated )
+					{
+						// Override angle
+						REX::DEBUG( "Aim assist mode: Default" );
+						CalculateProjectileAngles( fireOrigin, aimLocation,	*out_pitch, *out_yaw );
+
+						// Pitch offset for projectile with gravity in fixed angle mode
+						if( isFixedAngle && a_projectile->GetGravity() > 0.0f )
+						{
+							*out_pitch -= Settings::fPitchOffsetDegree * degToRad;
+						}
+					}
+
+					// Ignore angle correction greater than limit when using target leading mode
+					if( Settings::bEnabledTargetLeading )
+					{
+						
+						float angleDeltaLimit = Settings::fMaxLeadingAngle * ( std::numbers::pi_v<float> / 180.0f );
+						float pitchDiff = AngleDifference( *out_pitch, originalPitch );
+						float yawDiff = AngleDifference( *out_yaw, originalYaw );
+						if( pitchDiff >  angleDeltaLimit || yawDiff >  angleDeltaLimit ||
+							pitchDiff < -angleDeltaLimit || yawDiff < -angleDeltaLimit )
+						{
+							*out_pitch = originalPitch;
+							*out_yaw = originalYaw;
+						}
+					}
 				}
 
-				aimLocation = ClampVectorFromOrigin( RE::Main::WorldRootCamera()->world.translate, aimLocation, aimZeroDistance );
-
-				// Add ray penetration
-				auto camera = RE::Main::WorldRootCamera();
-				aimLocation = ExtendVectorFromOrigin( camera->world.translate, aimLocation, 30.0f );
-
-				RE::NiPoint3 targetVelocity;
-				RE::NiPoint3 fireOrigin = a_launchNode ? a_launchNode->world.translate : *a_origin;
-
-				// Get target velocity to calculate intercept
-				if( target )
-				{
-					target->GetLinearVelocity( targetVelocity );
-					auto targetName =  target->GetDisplayFullName();
-					REX::DEBUG( "Project aim correction ray target: {}", targetName ? targetName : "" );
-				}
-
-				bool firingAngleCalculated = false;
-				RE::NiPoint3 predicted;
-				float originalPitch = *out_pitch;
-				float originalYaw = *out_yaw;
-				if( CalculatePredictedProjectileAimPoint(
-					&predicted, &fireOrigin,
-					&aimLocation,
-					&targetVelocity,
-					a_projectile->GetSpeed(),
-					a_projectile->GetGravity() * GetWorldGravity(),
-					false ) )
-				{
-					REX::DEBUG( "Aim assist mode: Skyrim" );
-					aimLocation = predicted;
-				}
-				else // Use custom solver if the Skyrim solver cannot be used
-				{
-					REX::DEBUG( "Aim assist mode: Ballistic Solver" );
-					firingAngleCalculated = SolveBallisticIntercept( 
-						fireOrigin, aimLocation, &targetVelocity, 
-						a_projectile->GetSpeed(), a_projectile->GetGravity() * GetWorldGravity(), 
-						aimLocation, out_pitch, out_yaw );
-				}
-
-				if( !firingAngleCalculated )
-				{
-					// Override angle
-					REX::DEBUG( "Aim assist mode: Default" );
-					CalculateProjectileAngles( fireOrigin, aimLocation,	*out_pitch, *out_yaw );
-				}
-
-				// Ignore angle correction greater than limit
-				float constexpr angleDeltaLimit = 45.0f * ( std::numbers::pi_v<float> / 180.0f );
-				float pitchDiff = AngleDifference( *out_pitch, originalPitch );
-				float yawDiff = AngleDifference( *out_yaw, originalYaw );
-				if( pitchDiff >  angleDeltaLimit || yawDiff >  angleDeltaLimit ||
-					pitchDiff < -angleDeltaLimit || yawDiff < -angleDeltaLimit )
-				{
-					*out_pitch = originalPitch;
-					*out_yaw = originalYaw;
-				}
+				lastRayCoord = aimLocation;
+				rayImpactExpire = RE::BSTimer::GetSingleton()->smoothedRunTimeMS + 5000;
 			}
 		}
 		static inline REL::Relocation<decltype(thunk)> func;
@@ -136,7 +184,17 @@ namespace Hooks
 		static void thunk( RE::AIProcess* a_process, float a_pitch )
 		{
 			RE::PlayerCharacter* player = RE::PlayerCharacter::GetSingleton();
-			if( a_process == player->currentProcess )
+			if( Settings::bShowCrosshairRayImpact )
+			{
+				auto currentTimeMS = RE::BSTimer::GetSingleton()->smoothedRunTimeMS;
+				if( rayImpactExpire > currentTimeMS && lastRayCoord != RE::NiPoint3::Zero() )
+					SetCrosshairToWorldPosition( lastRayCoord );
+				else
+					ResetCrosshairPosition();
+			}
+
+			// Try to make the aiming pose align with the target
+			if( Settings::bEnabled && a_process == player->currentProcess )
 			{
 				// Initialize
 				if( currentPitch == FLT_MAX )
@@ -146,31 +204,45 @@ namespace Hooks
 					player->GetAttackState() >= RE::ATTACK_STATE_ENUM::kBowDraw &&
 					player->GetAttackState() <= RE::ATTACK_STATE_ENUM::kBowFollowThrough )
 				{
-					auto screenSize = RE::BSGraphics::Renderer::GetSingleton()->GetScreenSize();
-					
+					auto screenSize			= RE::BSGraphics::Renderer::GetSingleton()->GetScreenSize();
+					auto screenHalfWidth	= screenSize.width  / 2;
+					auto screenHalfHeight	= screenSize.height / 2;
+					int32_t crosshairX		= (int32_t)(screenHalfWidth  + ( Settings::fCrosshairPosX * screenHalfWidth ));
+					int32_t crosshairY		= (int32_t)(screenHalfHeight + ( Settings::fCrosshairPosY * screenHalfHeight ));
+
 					RE::NiPoint3 lookTarget{0,0,0};
 					RE::CFilter filter;
 					player->currentProcess->GetCharController()->GetCollisionFilterInfo( filter );
 					GetScreenRaycastTarget(
-						screenSize.width / 2,
-						screenSize.height / 2,
+						crosshairX,
+						crosshairY,
 						filter.GetSystemGroup(),
 						RE::COL_LAYER::kProjectile,
 						&lookTarget );
 
 					float lookPitch = 0, lookYaw;
 					auto aimPos = player->GetPosition();
-					aimPos.z += player->GetInfoRuntimeData().eyeHeight;
 
-					lookTarget = ExtendVectorFromOrigin( aimPos, lookTarget, 30.0f );
+					if( Settings::bEnabledPitchCorrection )
+						aimPos.z += player->GetInfoRuntimeData().eyeHeight;
+
+					// Add penetration
+					lookTarget = ExtendVectorFromOrigin( aimPos, lookTarget, Settings::fRayPenetrationDepth );
 
 					// Add z-bias
-					lookTarget.z += 30;
+					lookTarget.z += Settings::fHeightBias;
 
+					// 3rd model firing angle to the crosshair ray
 					CalculateProjectileAngles( aimPos, lookTarget, lookPitch, lookYaw );
 
-					// Pitch bias
-					float pitchBias = 0.1f;
+					// Fixed pitch adjustment
+					if( (PitchCorrectionMode)Settings::iPitchCorrectionMode == PitchCorrectionMode::kFixedAngle )
+					{
+						lookPitch -= Settings::fPitchOffsetDegree * degToRad;
+					}
+
+					// 3rd person pitch bias
+					float pitchBias = Settings::fPitchBias * degToRad;
 
 					// Reduce bias for extremes because they're already correct.
 					const float pi = std::numbers::pi_v<float>;
@@ -182,7 +254,8 @@ namespace Hooks
 					a_pitch = -lookPitch;
 
 					// Don't snap into place. Do it smoothly.
-					float maxDelta = 10.0f * RE::BSTimer::GetSingleton()->delta;
+					float maxRads = Settings::fMaxPitchAdjustmentSpeed * degToRad;
+					float maxDelta = maxRads * RE::BSTimer::GetSingleton()->delta;
 					float delta = a_pitch - currentPitch;
 					if( abs( delta ) < maxDelta )
 						currentPitch = a_pitch;
