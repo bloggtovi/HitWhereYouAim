@@ -103,4 +103,90 @@
       <Item Name="pad34" Optional="true">pad34</Item>
     </Expand>
   </Type>
+
+  <Type Name="RE::Projectile">
+    <DisplayString>Projectile</DisplayString>
+    <Expand>
+      <Item Name="[Projectile Runtime Data - SE / AE before 1.6.629 @ +0x98]" Optional="true">*(RE::Projectile::PROJECTILE_RUNTIME_DATA*)((unsigned char*)this + 0x98)</Item>
+      <Item Name="[Projectile Runtime Data - AE 1.6.629+ @ +0xA0]" Optional="true">*(RE::Projectile::PROJECTILE_RUNTIME_DATA*)((unsigned char*)this + 0xA0)</Item>
+      <ExpandedItem Optional="true">*(RE::TESObjectREFR*)this</ExpandedItem>
+    </Expand>
+  </Type>
+
+  <Type Name="RE::ArrowProjectile">
+    <DisplayString>ArrowProjectile</DisplayString>
+    <Expand>
+      <Item Name="[Projectile Runtime Data - SE / AE before 1.6.629 @ +0x98]" Optional="true">*(RE::Projectile::PROJECTILE_RUNTIME_DATA*)((unsigned char*)this + 0x98)</Item>
+      <Item Name="[Projectile Runtime Data - AE 1.6.629+ @ +0xA0]" Optional="true">*(RE::Projectile::PROJECTILE_RUNTIME_DATA*)((unsigned char*)this + 0xA0)</Item>
+      <Item Name="[Arrow Runtime Data - SE / AE before 1.6.629 @ +0x1D8]" Optional="true">*(RE::ArrowProjectile::ARROW_RUNTIME_DATA*)((unsigned char*)this + 0x1D8)</Item>
+      <Item Name="[Arrow Runtime Data - AE 1.6.629+ @ +0x1E0]" Optional="true">*(RE::ArrowProjectile::ARROW_RUNTIME_DATA*)((unsigned char*)this + 0x1E0)</Item>
+      <ExpandedItem Optional="true">*(RE::TESObjectREFR*)this</ExpandedItem>
+    </Expand>
+  </Type>
+
+  <Type Name="RE::BarrierProjectile">
+    <DisplayString>BarrierProjectile</DisplayString>
+    <Expand>
+      <Item Name="[Projectile Runtime Data - SE / AE before 1.6.629 @ +0x98]" Optional="true">*(RE::Projectile::PROJECTILE_RUNTIME_DATA*)((unsigned char*)this + 0x98)</Item>
+      <Item Name="[Projectile Runtime Data - AE 1.6.629+ @ +0xA0]" Optional="true">*(RE::Projectile::PROJECTILE_RUNTIME_DATA*)((unsigned char*)this + 0xA0)</Item>
+      <Item Name="[Barrier Runtime Data - SE / AE before 1.6.629 @ +0x1D8]" Optional="true">*(RE::BarrierProjectile::BARRIER_RUNTIME_DATA*)((unsigned char*)this + 0x1D8)</Item>
+      <Item Name="[Barrier Runtime Data - AE 1.6.629+ @ +0x1E0]" Optional="true">*(RE::BarrierProjectile::BARRIER_RUNTIME_DATA*)((unsigned char*)this + 0x1E0)</Item>
+      <ExpandedItem Optional="true">*(RE::TESObjectREFR*)this</ExpandedItem>
+    </Expand>
+  </Type>
+
+  <Type Name="RE::BeamProjectile">
+    <DisplayString>BeamProjectile</DisplayString>
+    <Expand>
+      <Item Name="[Projectile Runtime Data - SE / AE before 1.6.629 @ +0x98]" Optional="true">*(RE::Projectile::PROJECTILE_RUNTIME_DATA*)((unsigned char*)this + 0x98)</Item>
+      <Item Name="[Projectile Runtime Data - AE 1.6.629+ @ +0xA0]" Optional="true">*(RE::Projectile::PROJECTILE_RUNTIME_DATA*)((unsigned char*)this + 0xA0)</Item>
+      <Item Name="[Beam Runtime Data - SE / AE before 1.6.629 @ +0x1E0]" Optional="true">*(RE::BeamProjectile::BEAM_RUNTIME_DATA*)((unsigned char*)this + 0x1E0)</Item>
+      <Item Name="[Beam Runtime Data - AE 1.6.629+ @ +0x1E8]" Optional="true">*(RE::BeamProjectile::BEAM_RUNTIME_DATA*)((unsigned char*)this + 0x1E8)</Item>
+      <ExpandedItem Optional="true">*(RE::TESObjectREFR*)this</ExpandedItem>
+    </Expand>
+  </Type>
+
+  <Type Name="RE::ConeProjectile">
+    <DisplayString>ConeProjectile</DisplayString>
+    <Expand>
+      <Item Name="[Projectile Runtime Data - SE / AE before 1.6.629 @ +0x98]" Optional="true">*(RE::Projectile::PROJECTILE_RUNTIME_DATA*)((unsigned char*)this + 0x98)</Item>
+      <Item Name="[Projectile Runtime Data - AE 1.6.629+ @ +0xA0]" Optional="true">*(RE::Projectile::PROJECTILE_RUNTIME_DATA*)((unsigned char*)this + 0xA0)</Item>
+      <Item Name="[Cone Runtime Data - SE / AE before 1.6.629 @ +0x1D8]" Optional="true">*(RE::ConeProjectile::CONE_RUNTIME_DATA*)((unsigned char*)this + 0x1D8)</Item>
+      <Item Name="[Cone Runtime Data - AE 1.6.629+ @ +0x1E0]" Optional="true">*(RE::ConeProjectile::CONE_RUNTIME_DATA*)((unsigned char*)this + 0x1E0)</Item>
+      <ExpandedItem Optional="true">*(RE::TESObjectREFR*)this</ExpandedItem>
+    </Expand>
+  </Type>
+
+  <Type Name="RE::FlameProjectile">
+    <DisplayString>FlameProjectile</DisplayString>
+    <Expand>
+      <Item Name="[Projectile Runtime Data - SE / AE before 1.6.629 @ +0x98]" Optional="true">*(RE::Projectile::PROJECTILE_RUNTIME_DATA*)((unsigned char*)this + 0x98)</Item>
+      <Item Name="[Projectile Runtime Data - AE 1.6.629+ @ +0xA0]" Optional="true">*(RE::Projectile::PROJECTILE_RUNTIME_DATA*)((unsigned char*)this + 0xA0)</Item>
+      <Item Name="[Flame Runtime Data - SE / AE before 1.6.629 @ +0x1D8]" Optional="true">*(RE::FlameProjectile::FLAME_RUNTIME_DATA*)((unsigned char*)this + 0x1D8)</Item>
+      <Item Name="[Flame Runtime Data - AE 1.6.629+ @ +0x1E0]" Optional="true">*(RE::FlameProjectile::FLAME_RUNTIME_DATA*)((unsigned char*)this + 0x1E0)</Item>
+      <ExpandedItem Optional="true">*(RE::TESObjectREFR*)this</ExpandedItem>
+    </Expand>
+  </Type>
+
+  <Type Name="RE::GrenadeProjectile">
+    <DisplayString>GrenadeProjectile</DisplayString>
+    <Expand>
+      <Item Name="[Projectile Runtime Data - SE / AE before 1.6.629 @ +0x98]" Optional="true">*(RE::Projectile::PROJECTILE_RUNTIME_DATA*)((unsigned char*)this + 0x98)</Item>
+      <Item Name="[Projectile Runtime Data - AE 1.6.629+ @ +0xA0]" Optional="true">*(RE::Projectile::PROJECTILE_RUNTIME_DATA*)((unsigned char*)this + 0xA0)</Item>
+      <Item Name="[Grenade Runtime Data - SE / AE before 1.6.629 @ +0x1D8]" Optional="true">*(RE::GrenadeProjectile::GRENADE_RUNTIME_DATA*)((unsigned char*)this + 0x1D8)</Item>
+      <Item Name="[Grenade Runtime Data - AE 1.6.629+ @ +0x1E0]" Optional="true">*(RE::GrenadeProjectile::GRENADE_RUNTIME_DATA*)((unsigned char*)this + 0x1E0)</Item>
+      <ExpandedItem Optional="true">*(RE::TESObjectREFR*)this</ExpandedItem>
+    </Expand>
+  </Type>
+
+  <Type Name="RE::MissileProjectile">
+    <DisplayString>MissileProjectile</DisplayString>
+    <Expand>
+      <Item Name="[Projectile Runtime Data - SE / AE before 1.6.629 @ +0x98]" Optional="true">*(RE::Projectile::PROJECTILE_RUNTIME_DATA*)((unsigned char*)this + 0x98)</Item>
+      <Item Name="[Projectile Runtime Data - AE 1.6.629+ @ +0xA0]" Optional="true">*(RE::Projectile::PROJECTILE_RUNTIME_DATA*)((unsigned char*)this + 0xA0)</Item>
+      <Item Name="[Missile Runtime Data - SE / AE before 1.6.629 @ +0x1D8]" Optional="true">*(RE::MissileProjectile::MISSILE_RUNTIME_DATA*)((unsigned char*)this + 0x1D8)</Item>
+      <Item Name="[Missile Runtime Data - AE 1.6.629+ @ +0x1E0]" Optional="true">*(RE::MissileProjectile::MISSILE_RUNTIME_DATA*)((unsigned char*)this + 0x1E0)</Item>
+      <ExpandedItem Optional="true">*(RE::TESObjectREFR*)this</ExpandedItem>
+    </Expand>
+  </Type>
 </AutoVisualizer>

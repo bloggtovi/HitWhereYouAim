@@ -62,6 +62,7 @@ set(sources ${headers}
 	src/Settings.h
 	src/BallisticSolver.h
 	src/Utils.h
+	src/HitWhereYouAimAPI.h
 )
 
 set(sources ${sources}
@@ -69,6 +70,7 @@ set(sources ${sources}
 	src/main.cpp
 	src/Hooks.cpp
 	src/Settings.cpp
+	src/HitWhereYouAimAPI.cpp
 )
 
 source_group(

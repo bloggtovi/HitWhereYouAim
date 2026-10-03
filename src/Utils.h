@@ -59,6 +59,10 @@ static RE::NiPoint3 ExtendVectorFromOrigin( const RE::NiPoint3& a_origin, const 
 {
 	RE::NiPoint3 delta = a_target - a_origin;
 	float length = delta.Length();
+
+	if( length == 0 )
+		return a_target;
+
 	RE::NiPoint3 direction = delta / length;
 
 	return a_target + direction * a_extension;
@@ -70,7 +74,7 @@ static RE::NiPoint3 ClampVectorFromOrigin( const RE::NiPoint3& a_origin, const R
 	float length = delta.Length();
 	RE::NiPoint3 direction = delta / length;
 
-	if( length < a_maxLength )
+	if( length == 0 || length < a_maxLength )
 		return a_target;
 
 	return a_origin + direction * a_maxLength;
@@ -102,6 +106,53 @@ static bool CalculateProjectileAngles( const RE::NiPoint3& a_origin, const RE::N
 
 	if( horizontalSquared > 0.000001f )
 		a_angleZ = atan2( delta.x, delta.y );
+
+	return true;
+}
+
+static bool SetProjectileAngle( RE::Projectile* a_projectile, float a_angleX, float a_angleZ )
+{
+	if( !a_projectile )
+		return false;
+
+	auto& runtimeData = a_projectile->GetProjectileRuntimeData();
+	float speed = runtimeData.linearVelocity.Length();
+
+	if( speed <= 0.000001f )
+		return false;
+
+	float sinX = sin(a_angleX);
+	float cosX = cos(a_angleX);
+	float sinZ = sin(a_angleZ);
+	float cosZ = cos(a_angleZ);
+
+	const RE::NiPoint3 direction{
+		sinZ * cosX,
+		cosZ * cosX,
+		-sinX
+	};
+
+	a_projectile->data.angle.x = a_angleX;
+	a_projectile->data.angle.z = a_angleZ;
+
+	runtimeData.linearVelocity = direction * speed;
+
+	if( auto* projectile3D = a_projectile->Get3D() )
+	{
+		auto& rotation = projectile3D->local.rotate;
+
+		rotation.entry[0][0] = cosZ;
+		rotation.entry[0][1] = direction.x;
+		rotation.entry[0][2] = sinZ * sinX;
+
+		rotation.entry[1][0] = -sinZ;
+		rotation.entry[1][1] = direction.y;
+		rotation.entry[1][2] = cosZ * sinX;
+
+		rotation.entry[2][0] = 0.0F;
+		rotation.entry[2][1] = direction.z;
+		rotation.entry[2][2] = cosX;
+	}
 
 	return true;
 }
@@ -139,7 +190,7 @@ static RE::NiPoint3* CalculatePredictedProjectileAimPoint( RE::NiPoint3* a_outAi
 		return nullptr;
 
 	using func_t = decltype(&CalculatePredictedProjectileAimPoint);
-	static REL::Relocation<func_t> func{ RELOCATION_ID(47289, 47289) };
+	static REL::Relocation<func_t> func{ RELOCATION_ID(46025, 47289) };
 	return func( a_outAimPoint, a_origin, a_targetPosition, a_targetVelocity, a_projectileSpeed, a_gravity, a_highArc );
 }
 
@@ -149,7 +200,7 @@ static RE::NiPoint3* CalculatePredictedProjectileAimPoint( RE::NiPoint3* a_outAi
 
 static float GetWorldGravity()
 {
-	static REL::Relocation<const float*> worldGravity{ RELOCATION_ID(405286, 405286) };
+	static REL::Relocation<const float*> worldGravity{ RELOCATION_ID(518746, 405286) };
 	return *worldGravity;
 }
 
@@ -197,37 +248,36 @@ static RE::TESObjectREFR* GetRaycastTarget( RE::NiPoint3& a_origin, RE::NiPoint3
 }
 
 static RE::TESObjectREFR* GetScreenRaycastTarget( uint32_t a_x, uint32_t a_y, uint32_t a_collisionGroup,
-	RE::COL_LAYER a_collisionLayer, RE::NiPoint3* out_hitLocation = nullptr, RE::bhkPickData* out_pickData = nullptr )
+	RE::COL_LAYER a_collisionLayer, RE::NiPoint3* out_hitLocation = nullptr, RE::bhkPickData* out_pickData = nullptr, float a_maxDistance = 10000.0f )
 {
-	static float maxRayDistance = 10000.0f;
 	auto camera = RE::Main::WorldRootCamera();
 	auto screenSize = RE::BSGraphics::Renderer::GetSingleton()->GetScreenSize();
 
 	RE::NiPoint3 origin, direction;
 	camera->WindowPointToRay( a_x, a_y, origin, direction, (float)screenSize.width, (float)screenSize.height );
 	
-	RE::NiPoint3 target = camera->world.translate + direction * maxRayDistance;
+	RE::NiPoint3 target = camera->world.translate + direction * a_maxDistance;
 	return GetRaycastTarget( camera->world.translate, target, a_collisionGroup, a_collisionLayer, out_hitLocation, out_pickData );
 }
 
 static void UpdateAutoAimTarget( RE::PlayerCharacter* a_player, float a_maxDistance, bool a_alternateMode )
 {
-	using func_t = decltype(&UpdateAutoAimTarget);
-	static REL::Relocation<func_t> func{ RELOCATION_ID(41246, 41246) };
+		using func_t = decltype(&UpdateAutoAimTarget);
+		static REL::Relocation<func_t> func{ RELOCATION_ID(40243, 41246) };
 	func( a_player, a_maxDistance, a_alternateMode );
 }
 
 static int8_t RequestDetectionResult( RE::Actor* a_observer, RE::Actor* a_target, RE::DETECTION_PRIORITY a_priority )
 {
 	using func_t = decltype(&RequestDetectionResult);
-	static REL::Relocation<func_t> func{ RELOCATION_ID(37761, 37761) };
+	static REL::Relocation<func_t> func{ RELOCATION_ID(36745, 37761) };
 	return func( a_observer, a_target, a_priority );
 }
 
 static void ProjectBoundToScreen( const RE::NiCamera* a_camera, const RE::NiBound& a_bound, RE::NiPoint3& out_projectedMin, RE::NiPoint3& out_projectedMax, float a_nearThreshold )
 {
 	using func_t = decltype(&ProjectBoundToScreen);
-	static REL::Relocation<func_t> func{ RELOCATION_ID(70632, 70632) };
+	static REL::Relocation<func_t> func{ RELOCATION_ID(69265, 70632) };
 	func( a_camera, a_bound, out_projectedMin, out_projectedMax, a_nearThreshold );
 }
 

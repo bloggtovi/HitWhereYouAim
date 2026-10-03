@@ -2,9 +2,26 @@
 #include "Version.h"
 #include "Hooks.h"
 #include "Settings.h"
+#include "HitWhereYouAimAPI.h"
 
 float crosshairOriginalX = FLT_MAX;
 float crosshairOriginalY = FLT_MAX;
+
+extern "C" __declspec(dllexport) bool SKSEPlugin_Query( const SKSE::QueryInterface* a_skse, SKSE::PluginInfo* a_info )
+{
+	a_info->infoVersion = SKSE::PluginInfo::kVersion;
+	a_info->name = Version::NAME.data();
+	a_info->version = REL::Version{
+		Version::MAJOR,
+		Version::MINOR,
+		Version::PATCH
+	}.pack();
+
+	if( a_skse->IsEditor() )
+		return false;
+
+	return true;
+}
 
 SKSE_PLUGIN_VERSION = []() {
 	SKSE::PluginVersionData v;
@@ -26,6 +43,10 @@ namespace
 		{
 		case SKSE::MessagingInterface::kDataLoaded:
 			REX::INFO( "{} {} loaded", Version::PROJECT.data(), Version::NAME.data());
+			break;
+		case SKSE::MessagingInterface::kPostPostLoad:
+			// TDM Compatibility hook
+			Hooks::ProjectileInitHook::Install();
 			break;
 		}
 	}

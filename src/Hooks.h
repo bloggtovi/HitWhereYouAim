@@ -10,12 +10,33 @@ enum class PitchCorrectionMode
 	kFixedAngle,
 };
 
+struct CrosshairRaycastCache
+{
+	RE::NiPoint3		position;
+	RE::bhkPickData		pickData;
+	RE::TESObjectREFR*	target;
+	RE::COL_LAYER		collisionLayer;
+	uint32_t			collisionGroup;
+	uint32_t			frameCreated;
+
+	CrosshairRaycastCache()
+	{
+		memset( this, 0, sizeof(CrosshairRaycastCache) );
+	}
+};
+
 static constexpr float degToRad = std::numbers::pi_v<float> / 180.0f;
 static constexpr float meterToGameUnit = 1.0f / 0.0142875f;
 static RE::NiPoint3 lastRayCoord = {0,0,0};
 static uint32_t rayImpactExpire = 0;
 namespace Hooks
 {
+	static RE::TESObjectREFR* GetCrosshairRaycastTarget(
+		uint32_t a_collisionGroup,
+		RE::COL_LAYER a_collisionLayer,
+		RE::NiPoint3* out_hitLocation = nullptr,
+		RE::bhkPickData* out_pickData = nullptr);
+
 	struct PlayerProjectileCalculateLaunchAngleHook
 	{
 		static float AngleDifference( float a_corrected, float a_original )
@@ -23,151 +44,20 @@ namespace Hooks
 			return std::remainder( a_corrected - a_original, 2.0F * std::numbers::pi_v<float> );
 		}
 
+		static void CalculatePlayerProjectileLaunchAngle( RE::PlayerCharacter* a_player, RE::Projectile* a_projectile, RE::NiAVObject* a_launchNode,
+			float* out_yaw, float* out_pitch, RE::NiPoint3* a_origin, float a_unk7, float a_unk8 );
+
 		static void thunk( RE::PlayerCharacter* a_player, RE::Projectile* a_projectile, RE::NiAVObject* a_launchNode,
 			float* out_yaw, float* out_pitch, RE::NiPoint3* a_origin, float a_unk7, float a_unk8 )
 		{
 			func( a_player, a_projectile, a_launchNode, out_yaw, out_pitch, a_origin, a_unk7, a_unk8 ); // SkyrimSE.exe+0x764F10
-			
-			auto playerCamera		= RE::PlayerCamera::GetSingleton();
-			auto cameraState		= playerCamera->currentState.get();
-			auto thirdPersonState	= skyrim_cast<RE::ThirdPersonState*>( cameraState );
-			bool isFreeRotation		= thirdPersonState && thirdPersonState->GetFreeRotationMode();
-			if( Settings::bEnabled && !isFreeRotation &&
-				(
-				cameraState->id == RE::CameraState::kFirstPerson ||
-				cameraState->id == RE::CameraState::kThirdPerson ||
-				cameraState->id == RE::CameraState::kMount
-				))
-			{
-				bool isFixedAngle		= Settings::bEnabledPitchCorrection &&
-										 (PitchCorrectionMode)Settings::iPitchCorrectionMode == PitchCorrectionMode::kFixedAngle;
-				bool isAutoPitch		= Settings::bEnabledPitchCorrection &&
-										 (PitchCorrectionMode)Settings::iPitchCorrectionMode == PitchCorrectionMode::kAutomatic;
 
-				auto camera				= RE::Main::WorldRootCamera();
-				auto screenSize			= RE::BSGraphics::Renderer::GetSingleton()->GetScreenSize();
-				auto screenHalfWidth	= screenSize.width  / 2;
-				auto screenHalfHeight	= screenSize.height / 2;
-				int32_t crosshairX		= (int32_t)(screenHalfWidth  + ( Settings::fCrosshairPosX * screenHalfWidth ));
-				int32_t crosshairY		= (int32_t)(screenHalfHeight + ( Settings::fCrosshairPosY * screenHalfHeight ));
-				
-				float aimZeroDistance	= Settings::fMaximumTargetDistance * meterToGameUnit;
-				RE::NiPoint3 fireOrigin = a_origin ? *a_origin : a_launchNode->world.translate;
-
-				RE::NiPoint3 aimLocation;
-				RE::bhkPickData pickData;
-				auto target = GetScreenRaycastTarget(
-					crosshairX,
-					crosshairY,
-					a_projectile->GetCollisionGroup(),
-					a_projectile->GetProjectileRuntimeData().spell ? RE::COL_LAYER::kSpell : RE::COL_LAYER::kProjectile,
-					&aimLocation,
-					&pickData );
-
-				RE::NiPoint3 rayEnd = ((RE::NiPoint3&)(pickData.rayInput.to.quad.m128_f32) / havokScaling);
-				auto impactDepth = GetImpactDistanceAheadOfProjectileOrigin( camera->world.translate, rayEnd, aimLocation, fireOrigin );
-				REX::DEBUG( "Crosshair impact depth = {}", impactDepth );
-
-				// Cancel launch angle modification if the ray impact is behind the projectile origin
-				if( impactDepth > 0 )
-				{
-					if( Settings::bTargetDepthPrediction )
-					{
-						// Clamp depth to potential target if there is one
-						auto [potentialTarget,predictPos] = GetPotentialPlayerTarget( aimZeroDistance, a_projectile, Settings::fPredictionWindowWidth, Settings::fPredictionWindowHeight );
-						if( potentialTarget )
-						{
-							auto predictedDist = (predictPos - a_player->GetPosition()).Length();
-							aimZeroDistance = predictedDist;
-
-							REX::DEBUG( "Predicted aim target: {}, distance: {}", potentialTarget->GetDisplayFullName(), aimZeroDistance );
-						}
-					}
-
-					aimLocation = ClampVectorFromOrigin( RE::Main::WorldRootCamera()->world.translate, aimLocation, aimZeroDistance );
-
-					// Add ray penetration
-					aimLocation = ExtendVectorFromOrigin( camera->world.translate, aimLocation, Settings::fRayPenetrationDepth * meterToGameUnit );
-
-					RE::NiPoint3 targetVelocity;
-
-					// Get target velocity to calculate intercept
-					if( target )
-					{
-						target->GetLinearVelocity( targetVelocity );
-						auto targetName =  target->GetDisplayFullName();
-						REX::DEBUG( "Project aim correction ray target: {}", targetName ? targetName : "" );
-					}
-
-					bool firingAngleCalculated = false;
-					RE::NiPoint3 predicted;
-					float originalPitch = *out_pitch;
-					float originalYaw = *out_yaw;
-					// Use ballistic solver to solve the aim pitch
-					if( isAutoPitch ||	Settings::bEnabledTargetLeading )
-					{
-						// Zero out the velocity prediction if not needed
-						if( !Settings::bEnabledTargetLeading )
-							targetVelocity = { 0, 0, 0 };
-
-						if( CalculatePredictedProjectileAimPoint(
-							&predicted, &fireOrigin,
-							&aimLocation,
-							&targetVelocity,
-							a_projectile->GetSpeed(),
-							a_projectile->GetGravity() * GetWorldGravity(),
-							false ) )
-						{
-							REX::DEBUG( "Aim assist mode: Skyrim" );
-							aimLocation = predicted;
-						}
-						else // Use custom solver if the Skyrim solver cannot be used
-						{
-							REX::DEBUG( "Aim assist mode: Ballistic Solver" );
-							firingAngleCalculated = SolveBallisticIntercept( 
-								fireOrigin, aimLocation, &targetVelocity, 
-								a_projectile->GetSpeed(), a_projectile->GetGravity() * GetWorldGravity(), 
-								aimLocation, out_pitch, out_yaw );
-						}
-					}
-
-					if( !firingAngleCalculated )
-					{
-						// Override angle
-						REX::DEBUG( "Aim assist mode: Default" );
-						CalculateProjectileAngles( fireOrigin, aimLocation,	*out_pitch, *out_yaw );
-
-						// Pitch offset for projectile with gravity in fixed angle mode
-						if( isFixedAngle && a_projectile->GetGravity() > 0.0f )
-						{
-							*out_pitch -= Settings::fPitchOffsetDegree * degToRad;
-						}
-					}
-
-					// Ignore angle correction greater than limit when using target leading mode
-					if( Settings::bEnabledTargetLeading )
-					{
-						
-						float angleDeltaLimit = Settings::fMaxLeadingAngle * ( std::numbers::pi_v<float> / 180.0f );
-						float pitchDiff = AngleDifference( *out_pitch, originalPitch );
-						float yawDiff = AngleDifference( *out_yaw, originalYaw );
-						if( pitchDiff >  angleDeltaLimit || yawDiff >  angleDeltaLimit ||
-							pitchDiff < -angleDeltaLimit || yawDiff < -angleDeltaLimit )
-						{
-							*out_pitch = originalPitch;
-							*out_yaw = originalYaw;
-						}
-					}
-				}
-
-				lastRayCoord = aimLocation;
-				rayImpactExpire = RE::BSTimer::GetSingleton()->smoothedRunTimeMS + 5000;
-			}
+			CalculatePlayerProjectileLaunchAngle( a_player, a_projectile, a_launchNode, out_yaw, out_pitch, a_origin, a_unk7, a_unk8 );
 		}
 		static inline REL::Relocation<decltype(thunk)> func;
 		static void Install()
 		{
-			auto addr = util::GetInjectionAddress( RELOCATION_RAW(44200,44200), 
+			auto addr = util::GetInjectionAddress( RELOCATION_RAW(43009,44200), 
 				"F3 0F 11 ?? 24 38 F3 0F 11 ?? 24 30 48 89 ?? 24 28 48 89 ?? 24 20 4C 8B C5 48 8B D7 48 8B 0D ?? ?? ?? ?? E8", 0x23, "E8" );
 
 			if( !addr )
@@ -177,98 +67,53 @@ namespace Hooks
 		}
 	};
 
+	struct ConcentrationSpellAngleHook
+	{
+		using func_t = float( RE::Projectile*, float );
+		static inline float playerYaw = FLT_MAX;
+		static inline float playerPitch = FLT_MAX;
+		static float SetAimPitch( RE::Projectile* a_projectile, float a_angle, func_t* func );
+		static float SetAimYaw( RE::Projectile* a_projectile, float a_angle, func_t* func );
+
+		static float SetAimPitchFlame( RE::Projectile* a_projectile, float a_angle ) { return SetAimPitch( a_projectile, a_angle, (func_t*)funcPitchFlame ); }
+		static float SetAimYawFlame( RE::Projectile* a_projectile, float a_angle ) { return SetAimYaw( a_projectile, a_angle, (func_t*)funcYawFlame ); }
+		static float SetAimPitchBeam( RE::Projectile* a_projectile, float a_angle ) { return SetAimPitch( a_projectile, a_angle, (func_t*)funcPitchBeam ); }
+		static float SetAimYawBeam( RE::Projectile* a_projectile, float a_angle ) { return SetAimYaw( a_projectile, a_angle, (func_t*)funcYawBeam ); }
+		static inline uintptr_t funcPitchFlame;
+		static inline uintptr_t funcYawFlame;
+		static inline uintptr_t funcPitchBeam;
+		static inline uintptr_t funcYawBeam;
+		static void Install()
+		{
+			auto addr = util::GetInjectionAddress( RELOCATION_RAW(42727,43894), 
+				"48 8B CD E8 ?? ?? ?? ?? 0F 28 C8 48 8B CE E8 ?? ?? ?? ?? 48 8B CD E8 ?? ?? ?? ?? 0F 28 C8 48 8B CE E8 ?? ?? ?? ??" );
+
+			if( !addr )
+				REX::FAIL( "Cannot find target instruction for ConcentrationSpellAngleHook(Flame)" );
+
+			auto& trampoline = SKSE::GetTrampoline();
+			funcYawFlame = trampoline.write_call<5>( addr + 0xE, SetAimYawFlame );
+			funcPitchFlame = trampoline.write_call<5>( addr + 0x21, SetAimPitchFlame );
+
+			addr = util::GetInjectionAddress( RELOCATION_RAW(42586,43749), 
+				"49 8B CE E8 ?? ?? ?? ?? 0F 28 C8 48 8B CE E8 ?? ?? ?? ?? 49 8B CE E8 ?? ?? ?? ?? 0F 28 C8 48 8B CE E8 ?? ?? ?? ??" );
+
+			if( !addr )
+				REX::FAIL( "Cannot find target instruction for ConcentrationSpellAngleHook(Beam)" );
+
+			funcYawBeam = trampoline.write_call<5>( addr + 0xE, SetAimYawBeam );
+			funcPitchBeam = trampoline.write_call<5>( addr + 0x21, SetAimPitchBeam );
+		}
+	};
 
 	static float currentPitch = FLT_MAX;
 	struct PlayerSetAimPitchHook
 	{
+		static float PlayerGetAimPitch( RE::AIProcess* a_process, const float a_pitch );
+
 		static void thunk( RE::AIProcess* a_process, float a_pitch )
 		{
-			RE::PlayerCharacter* player = RE::PlayerCharacter::GetSingleton();
-			if( Settings::bShowCrosshairRayImpact )
-			{
-				auto currentTimeMS = RE::BSTimer::GetSingleton()->smoothedRunTimeMS;
-				if( rayImpactExpire > currentTimeMS && lastRayCoord != RE::NiPoint3::Zero() )
-					SetCrosshairToWorldPosition( lastRayCoord );
-				else
-					ResetCrosshairPosition();
-			}
-
-			// Try to make the aiming pose align with the target
-			if( Settings::bEnabled && a_process == player->currentProcess )
-			{
-				// Initialize
-				if( currentPitch == FLT_MAX )
-					currentPitch = a_pitch;
-
-				if( player->GetWeaponState() == RE::WEAPON_STATE::kDrawn &&
-					player->GetAttackState() >= RE::ATTACK_STATE_ENUM::kBowDraw &&
-					player->GetAttackState() <= RE::ATTACK_STATE_ENUM::kBowFollowThrough )
-				{
-					auto screenSize			= RE::BSGraphics::Renderer::GetSingleton()->GetScreenSize();
-					auto screenHalfWidth	= screenSize.width  / 2;
-					auto screenHalfHeight	= screenSize.height / 2;
-					int32_t crosshairX		= (int32_t)(screenHalfWidth  + ( Settings::fCrosshairPosX * screenHalfWidth ));
-					int32_t crosshairY		= (int32_t)(screenHalfHeight + ( Settings::fCrosshairPosY * screenHalfHeight ));
-
-					RE::NiPoint3 lookTarget{0,0,0};
-					RE::CFilter filter;
-					player->currentProcess->GetCharController()->GetCollisionFilterInfo( filter );
-					GetScreenRaycastTarget(
-						crosshairX,
-						crosshairY,
-						filter.GetSystemGroup(),
-						RE::COL_LAYER::kProjectile,
-						&lookTarget );
-
-					float lookPitch = 0, lookYaw;
-					auto aimPos = player->GetPosition();
-
-					if( Settings::bEnabledPitchCorrection )
-						aimPos.z += player->GetInfoRuntimeData().eyeHeight;
-
-					// Add penetration
-					lookTarget = ExtendVectorFromOrigin( aimPos, lookTarget, Settings::fRayPenetrationDepth );
-
-					// Add z-bias
-					lookTarget.z += Settings::fHeightBias;
-
-					// 3rd model firing angle to the crosshair ray
-					CalculateProjectileAngles( aimPos, lookTarget, lookPitch, lookYaw );
-
-					// Fixed pitch adjustment
-					if( (PitchCorrectionMode)Settings::iPitchCorrectionMode == PitchCorrectionMode::kFixedAngle )
-					{
-						lookPitch -= Settings::fPitchOffsetDegree * degToRad;
-					}
-
-					// 3rd person pitch bias
-					float pitchBias = Settings::fPitchBias * degToRad;
-
-					// Reduce bias for extremes because they're already correct.
-					const float pi = std::numbers::pi_v<float>;
-					float t = std::clamp(( std::abs(lookPitch) - pi * 0.25f) / ( pi * 0.25f ), 0.0f, 1.0f);
-					float biasFactor = 1.0f - t * t * ( 3.0f - 2.0f * t );
-					pitchBias *= biasFactor;
-					lookPitch -= pitchBias;
-
-					a_pitch = -lookPitch;
-
-					// Don't snap into place. Do it smoothly.
-					float maxRads = Settings::fMaxPitchAdjustmentSpeed * degToRad;
-					float maxDelta = maxRads * RE::BSTimer::GetSingleton()->delta;
-					float delta = a_pitch - currentPitch;
-					if( abs( delta ) < maxDelta )
-						currentPitch = a_pitch;
-					else
-						currentPitch += copysign( maxDelta, delta );
-
-					a_pitch = currentPitch;
-				}
-				else
-				{
-					currentPitch = 0; // Reset when not firing
-				}
-			}
+			a_pitch = PlayerGetAimPitch( a_process, a_pitch );
 
 			return func( a_process, a_pitch );
 		}
@@ -276,15 +121,62 @@ namespace Hooks
 
 		static void Install()
 		{
-			auto addr = util::GetInjectionAddress( 37356, 
-				"F3 0F 10 4F 48 41 0F 57 C9 48 8B 8F F8 00 00 00 E8 ?? ?? ?? ??", 0x10, "E8" );
-
-			if( !addr )
+			// SE: 36602 0x5EDD50+0x148
+			if( Runtime::version == SKSE::RUNTIME_SSE_1_5_97 )
 			{
-				REX::FAIL( "Cannot find target instruction for PlayerSetAimPitchHook" );
+				auto addr = REL::Relocation( REL::ID( 36602 ), 0x148 ).address();
+				stl::write_thunk_call<PlayerSetAimPitchHook>( addr );
 			}
+			else
+			{
+				auto addr = util::GetInjectionAddress( 37356, 
+					"F3 0F 10 4F 48 41 0F 57 C9 48 8B 8F F8 00 00 00 E8 ?? ?? ?? ??", 0x10, "E8" );
 
-			stl::write_thunk_call<PlayerSetAimPitchHook>( addr );
+				if( !addr )
+				{
+					REX::FAIL( "Cannot find target instruction for PlayerSetAimPitchHook" );
+				}
+
+				stl::write_thunk_call<PlayerSetAimPitchHook>( addr );
+			}
+		}
+	};
+
+	struct ProjectileInitHook
+	{
+		static void OverrideProjectileInit( RE::Projectile* a_this, RE::NiPoint3& a_angle );
+
+		static void thunk( RE::Projectile* a_this )
+		{
+			// Copy old unmodified angle
+			RE::NiPoint3 angle = a_this->data.angle;
+
+			// Run original (TDM overrides the data here)
+			func( a_this );
+
+			OverrideProjectileInit( a_this, angle );
+		}
+
+		static inline REL::Relocation<decltype(thunk)> func;
+		static void Install()
+		{
+			if( Runtime::version == SKSE::RUNTIME_SSE_1_5_97 )
+			{
+				auto addr = REL::Relocation( REL::ID( 43030 ), 0x3B8 ).address();
+				stl::write_thunk_call<ProjectileInitHook>( addr );
+			}
+			else
+			{
+				auto addr = util::GetInjectionAddress( 44222,
+					"48 8B 01 FF 50 08 48 8B CF E8 ?? ?? ?? ?? 48 8B D7", 0x9, "E8" );
+
+				if( !addr )
+				{
+					REX::FAIL( "Cannot find target instruction for ProjectileInitHook" );
+				}
+
+				stl::write_thunk_call<ProjectileInitHook>( addr );
+			}
 		}
 	};
 
@@ -326,19 +218,6 @@ namespace Hooks
 				MH_EnableHook( addr );
 			}
 		};
-
-		struct ProjectileUpdateHook
-		{
-			static uint64_t thunk( RE::Projectile* a_projectile, float a_delta )
-			{
-				return func( a_projectile, a_delta );
-			}
-
-			static inline REL::Relocation<decltype(thunk)> func;
-			static const size_t size = 0xB5;
-		};
-
-
 	}
 
 	namespace Unused
@@ -361,15 +240,18 @@ namespace Hooks
 			}
 		};
 
-		struct ProjectileUpdateHook
+		struct BeamProjectileUpdateHook
 		{
-			static uint64_t thunk( RE::Projectile* a_projectile, float a_delta )
+			static void thunk( RE::Projectile* a_projectile, float a_delta )
 			{
 				return func( a_projectile, a_delta );
 			}
-
 			static inline REL::Relocation<decltype(thunk)> func;
-			static const size_t size = 0xB5;
+			static const size_t size = 0xAB;
+			static void Install()
+			{
+				stl::write_vfunc<RE::BeamProjectile, 0, BeamProjectileUpdateHook>();
+			}
 		};
 
 		// 38009 SkyrimSE.exe+0x6A1370+0x682

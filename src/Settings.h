@@ -104,6 +104,7 @@ struct Settings
 	static inline float		fHeightBias;
 	static inline float		fBiasFadingStart;
 	static inline float		fMaxPitchAdjustmentSpeed;
+	static inline float		fMountedYawTolerance;
 
 	// Debug
 	static inline bool		bEnableLogging;

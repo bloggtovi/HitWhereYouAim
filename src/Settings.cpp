@@ -29,6 +29,7 @@ void Settings::Load()
 	settings->RegisterBinding( { &fHeightBias,				Settings::BindingType::kFloat,		"AngleCorrection", "fHeightBias",				0.0f } );
 	settings->RegisterBinding( { &fBiasFadingStart,			Settings::BindingType::kFloat,		"AngleCorrection", "fBiasFadingStart",			45.0f } );
 	settings->RegisterBinding( { &fMaxPitchAdjustmentSpeed,	Settings::BindingType::kFloat,		"AngleCorrection", "fMaxPitchAdjustmentSpeed",	360.0f } );
+	settings->RegisterBinding( { &fMountedYawTolerance,		Settings::BindingType::kFloat,		"AngleCorrection", "fMountedYawTolerance",		15.0f } );
 
 	settings->RegisterBinding( { &bEnableLogging,			Settings::BindingType::kBoolean,	"Debug", "bEnableLogging",				false } );
 	settings->RegisterBinding( { &bShowTargetPredictionInfo,Settings::BindingType::kBoolean,	"Debug", "bShowTargetPredictionInfo",	false } );
