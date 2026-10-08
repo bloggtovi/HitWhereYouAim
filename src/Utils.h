@@ -312,7 +312,7 @@ static std::pair<RE::TESObjectREFR*,RE::NiPoint3> GetPotentialPlayerTarget( floa
 	float projectileSpeed = a_projectile ? a_projectile->GetSpeed() : 0;
 
 	RE::NiPoint3 origin = a_projectile ? a_projectile->GetPosition() : player->GetPosition();
-	
+
 	RE::Actor* targetCandidate = nullptr;
 	RE::NiPoint3 targetMoveDelta{ 0, 0, 0 };
 	bool isPlayerInCombat = player->IsInCombat();
@@ -330,7 +330,8 @@ static std::pair<RE::TESObjectREFR*,RE::NiPoint3> GetPotentialPlayerTarget( floa
 			if( actor3D->flags.any( RE::NiAVObject::Flag::kNotVisible ) )
 				continue;
 
-			if( isPlayerInCombat && !highActor->IsHostileToActor( player ) )
+			bool isHostile = highActor->IsHostileToActor( player );
+			if( isPlayerInCombat && !isHostile )
 				continue;
 
 			auto commander = highActor->GetCommandingActor();
@@ -385,6 +386,16 @@ static std::pair<RE::TESObjectREFR*,RE::NiPoint3> GetPotentialPlayerTarget( floa
 				continue;
 			if( projectedYMax.y < -a_yLimit || projectedYMin.y > a_yLimit )
 				continue;
+
+			if( !isHostile )
+			{
+				float xDepth = ( projectedXMax.x - projectedXMin.x ) * 0.1f;
+				float yDepth = ( projectedYMax.y - projectedYMin.y ) * 0.1f;
+				if( projectedXMin.x + xDepth > 0 || projectedXMax.x - xDepth < 0 )
+					continue;
+				if( projectedYMin.y + yDepth > 0 || projectedYMax.y - yDepth < 0 )
+					continue;
+			}
 
 			// Reject target we can't see
 			//auto result = RequestDetectionResult( player, highActor.get(), RE::DETECTION_PRIORITY::kCritical );
