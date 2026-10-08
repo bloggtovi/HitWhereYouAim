@@ -7,7 +7,7 @@
 static float havokScaling = 0.0142875f;
 
 static bool SolveBallisticIntercept( const RE::NiPoint3& a_origin, const RE::NiPoint3& a_target, const RE::NiPoint3* a_targetVelocity,
-	float a_projectileSpeed, float a_projectileGravity, RE::NiPoint3& out_intercept, float* out_angleX, float* out_angleZ )
+	float a_projectileSpeed, float a_projectileGravity, RE::NiPoint3* out_intercept, float* out_angleX, float* out_angleZ )
 {
 	RE::NiPoint3 targetVelocity{ a_targetVelocity ? *a_targetVelocity : RE::NiPoint3::Zero() };
 
@@ -26,9 +26,12 @@ static bool SolveBallisticIntercept( const RE::NiPoint3& a_origin, const RE::NiP
 			result, false) )
 	{
 		// Convert back to Skyrim coord
-		out_intercept.x = (float)result.interceptPosition.x;
-		out_intercept.y = (float)result.interceptPosition.z;
-		out_intercept.z = (float)result.interceptPosition.y;
+		if( out_intercept )
+		{
+			out_intercept->x = (float)result.interceptPosition.x;
+			out_intercept->y = (float)result.interceptPosition.z;
+			out_intercept->z = (float)result.interceptPosition.y;
+		}
 
 		if( out_angleX ) *out_angleX = (float)-result.pitch; // Skyrim negative pitch is upward
 		if( out_angleZ ) *out_angleZ = (float)result.yaw;
@@ -274,6 +277,17 @@ static int8_t RequestDetectionResult( RE::Actor* a_observer, RE::Actor* a_target
 	return func( a_observer, a_target, a_priority );
 }
 
+static bool HasLineOfSight( RE::TESObjectREFR* a_observer, RE::TESObjectREFR* a_target )
+{
+	static auto hasLOSCondition = RE::TESCondition();
+	static RE::TESConditionItem hasLOS = RE::TESConditionItem();
+	hasLOS.data.comparisonValue.f = 1.0f;
+	hasLOS.data.functionData.function = RE::FUNCTION_DATA::FunctionID::kGetLineOfSight;
+	hasLOSCondition.head = &hasLOS;
+
+	return hasLOSCondition.IsTrue( a_observer, a_target );
+}
+
 static void ProjectBoundToScreen( const RE::NiCamera* a_camera, const RE::NiBound& a_bound, RE::NiPoint3& out_projectedMin, RE::NiPoint3& out_projectedMax, float a_nearThreshold )
 {
 	using func_t = decltype(&ProjectBoundToScreen);
@@ -281,17 +295,27 @@ static void ProjectBoundToScreen( const RE::NiCamera* a_camera, const RE::NiBoun
 	func( a_camera, a_bound, out_projectedMin, out_projectedMax, a_nearThreshold );
 }
 
-static std::pair<RE::TESObjectREFR*,RE::NiPoint3> GetPotentialPlayerTarget( float a_distance, RE::Projectile* a_projectile = nullptr, float a_xLimit = 0.5f, float a_yLimit = 0.5f )
+static std::pair<RE::TESObjectREFR*,RE::NiPoint3> GetPotentialPlayerTarget( float a_distance, RE::Projectile* a_projectile = nullptr, float a_xLimit = 0.25f, float a_yLimit = 0.25f )
 {
+	if( a_xLimit <= 0 ) a_xLimit = 0.0001f;
+	if( a_yLimit <= 0 ) a_yLimit = 0.0001f;
+
 	auto processLists = RE::ProcessLists::GetSingleton();
 	auto player = RE::PlayerCharacter::GetSingleton();
-	float distanceSquared = a_distance * a_distance;
-	float bestHScore = 1.0f;
-	float bestVScore = 1.0f;
-	float projectileSpeed = a_projectile ? a_projectile->GetSpeed() : 0;
 	RE::NiCamera* camera = RE::Main::WorldRootCamera();
+
+	if( !processLists || !player || !camera )
+		return {};
+
+	float distanceSquared = a_distance * a_distance;
+	float bestScore = FLT_MAX;
+	float projectileSpeed = a_projectile ? a_projectile->GetSpeed() : 0;
+
+	RE::NiPoint3 origin = a_projectile ? a_projectile->GetPosition() : player->GetPosition();
+	
 	RE::Actor* targetCandidate = nullptr;
 	RE::NiPoint3 targetMoveDelta{ 0, 0, 0 };
+	bool isPlayerInCombat = player->IsInCombat();
 	for( auto highHandle : processLists->highActorHandles )
 	{
 		if( auto highActor = highHandle.get() )
@@ -306,11 +330,14 @@ static std::pair<RE::TESObjectREFR*,RE::NiPoint3> GetPotentialPlayerTarget( floa
 			if( actor3D->flags.any( RE::NiAVObject::Flag::kNotVisible ) )
 				continue;
 
+			if( isPlayerInCombat && !highActor->IsHostileToActor( player ) )
+				continue;
+
 			auto commander = highActor->GetCommandingActor();
 			if( commander && commander.get() == player )
 				continue;
 
-			RE::NiPoint3 delta = player->GetPosition() - highActor->GetPosition();
+			RE::NiPoint3 delta = origin - highActor->GetPosition();
 			float actorDistanceSquared = delta.SqrLength();
 			if( actorDistanceSquared > distanceSquared )
 				continue;
@@ -328,8 +355,8 @@ static std::pair<RE::TESObjectREFR*,RE::NiPoint3> GetPotentialPlayerTarget( floa
 				highActor->GetLinearVelocity( velocity );
 
 				// Simple two pass predictor
-				float	ttr = CalculateProjectileFlightTimeToTarget( player->GetPosition(), bound.center					, projectileSpeed );
-						ttr = CalculateProjectileFlightTimeToTarget( player->GetPosition(), bound.center + velocity * ttr	, projectileSpeed );
+				float	ttr = CalculateProjectileFlightTimeToTarget( origin, bound.center					, projectileSpeed );
+						ttr = CalculateProjectileFlightTimeToTarget( origin, bound.center + velocity * ttr	, projectileSpeed );
 
 				moveDelta = velocity * ttr;
 			}
@@ -343,9 +370,10 @@ static std::pair<RE::TESObjectREFR*,RE::NiPoint3> GetPotentialPlayerTarget( floa
 			RE::NiPoint3 projectedXMin,projectedXMax;
 			ProjectBoundToScreen( camera, bound, projectedXMin, projectedXMax, 0 );
 
-			float hScore = abs( projectedXMin.x + projectedXMax.x );
-			float vScore = abs( projectedYMin.y + projectedYMax.y );
-			if( hScore >= bestHScore && vScore >= bestVScore )
+			float hScore = abs( projectedXMin.x + projectedXMax.x ) / a_xLimit;
+			float vScore = abs( projectedYMin.y + projectedYMax.y ) / a_yLimit;
+			float score = hScore * hScore + vScore * vScore;
+			if( score >= bestScore )
 				continue;
 
 			if( projectedXMin.x == -1.0F && projectedXMax.x == 1.0F )
@@ -359,12 +387,12 @@ static std::pair<RE::TESObjectREFR*,RE::NiPoint3> GetPotentialPlayerTarget( floa
 				continue;
 
 			// Reject target we can't see
-			auto result = RequestDetectionResult( player, highActor.get(), RE::DETECTION_PRIORITY::kCritical );
+			//auto result = RequestDetectionResult( player, highActor.get(), RE::DETECTION_PRIORITY::kCritical );
+			auto result = HasLineOfSight( player, highActor.get() );
 			if( result == 0 )
 				continue;
 
-			bestHScore = hScore;
-			bestVScore = vScore;
+			bestScore = score;
 
 			targetCandidate = highActor.get();
 			targetMoveDelta = moveDelta;
@@ -374,7 +402,7 @@ static std::pair<RE::TESObjectREFR*,RE::NiPoint3> GetPotentialPlayerTarget( floa
 	if( targetCandidate )
 		return std::make_pair( targetCandidate, targetCandidate->GetPosition() + targetMoveDelta );
 
-	return std::make_pair( targetCandidate, targetMoveDelta );
+	return std::make_pair( nullptr, targetMoveDelta );
 }
 
 static float GetImpactDistanceAheadOfProjectileOrigin(
@@ -397,8 +425,12 @@ static float GetImpactDistanceAheadOfProjectileOrigin(
 
 extern float crosshairOriginalX;
 extern float crosshairOriginalY;
+static std::mutex crosshairMutex;
 static bool SetCrosshairPosition( float a_screenX, float a_screenY )
 {
+	// Touching UI Movie is dangerous without lock
+	std::lock_guard lock{ crosshairMutex };
+
 	auto* ui = RE::UI::GetSingleton();
 	if( !ui )
 		return false;
@@ -490,6 +522,14 @@ static bool SetCrosshairToWorldPosition( const RE::NiPoint3& a_world )
 	float screenY = viewport.top + ( 1.0f - normalizedY ) * viewport.height;
 
 	return SetCrosshairPosition( screenX, screenY );
+}
+
+using conditionFunc_t = bool(RE::TESObjectREFR* a_ref, void* a_param1, void* a_param2, double& out_result);
+static conditionFunc_t* GetConditionFunctionEntry( RE::FUNCTION_DATA::FunctionID a_id )
+{
+	static auto functionTable = REL::Relocation<uintptr_t>( RELOCATION_ID( 361129, 361129 ) ).address();
+	static size_t stride = 0x50;
+	return *reinterpret_cast<conditionFunc_t**>( functionTable + (uint32_t)a_id * stride );
 }
 
 #pragma warning(pop)

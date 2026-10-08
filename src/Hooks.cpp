@@ -102,7 +102,7 @@ void Hooks::PlayerProjectileCalculateLaunchAngleHook::CalculatePlayerProjectileL
 
 		auto camera				= RE::Main::WorldRootCamera();
 		float aimZeroDistance	= Settings::fMaximumTargetDistance * meterToGameUnit;
-		RE::NiPoint3 fireOrigin = a_launchNode ? a_launchNode->world.translate : *a_origin;
+		RE::NiPoint3 fireOrigin = a_origin ? *a_origin : a_launchNode->world.translate;
 
 		RE::NiPoint3 aimLocation;
 		RE::bhkPickData pickData;
@@ -122,7 +122,8 @@ void Hooks::PlayerProjectileCalculateLaunchAngleHook::CalculatePlayerProjectileL
 			if( Settings::bTargetDepthPrediction )
 			{
 				// Clamp depth to potential target if there is one
-				auto [potentialTarget,predictPos] = GetPotentialPlayerTarget( aimZeroDistance, a_projectile, Settings::fPredictionWindowWidth, Settings::fPredictionWindowHeight );
+				RE::NiPoint3 rayDelta = camera->world.translate - aimLocation;
+				auto [potentialTarget,predictPos] = GetPotentialPlayerTarget( rayDelta.Length(), a_projectile, Settings::fPredictionWindowWidth, Settings::fPredictionWindowHeight);
 				if( potentialTarget )
 				{
 					auto predictedDist = (predictPos - camera->world.translate).Length();
@@ -148,12 +149,14 @@ void Hooks::PlayerProjectileCalculateLaunchAngleHook::CalculatePlayerProjectileL
 				PrintDebugInfo( "Project aim correction ray target: {}", targetName ? targetName : "" );
 			}
 
+			lastRayCoord = aimLocation;
+
 			bool firingAngleCalculated = false;
 			RE::NiPoint3 predicted;
 			float originalPitch = *out_pitch;
 			float originalYaw = *out_yaw;
 			// Use ballistic solver to solve the aim pitch
-			if( isAutoPitch ||	Settings::bEnabledTargetLeading )
+			if( isAutoPitch )
 			{
 				// Zero out the velocity prediction if not needed
 				if( !Settings::bEnabledTargetLeading )
@@ -176,7 +179,7 @@ void Hooks::PlayerProjectileCalculateLaunchAngleHook::CalculatePlayerProjectileL
 					firingAngleCalculated = SolveBallisticIntercept( 
 						fireOrigin, aimLocation, &targetVelocity, 
 						a_projectile->GetSpeed(), a_projectile->GetGravity() * GetWorldGravity(), 
-						aimLocation, out_pitch, out_yaw );
+						nullptr, out_pitch, out_yaw );
 				}
 			}
 
@@ -194,7 +197,9 @@ void Hooks::PlayerProjectileCalculateLaunchAngleHook::CalculatePlayerProjectileL
 			}
 
 			// Ignore angle correction greater than limit when using target leading mode
-			if( Settings::bEnabledTargetLeading )
+			if( Settings::bEnabledPitchCorrection &&
+				Settings::iPitchCorrectionMode == (uint32_t)PitchCorrectionMode::kAutomatic &&
+				Settings::bEnabledTargetLeading )
 			{
 
 				float angleDeltaLimit = Settings::fMaxLeadingAngle * degToRad;
@@ -209,7 +214,17 @@ void Hooks::PlayerProjectileCalculateLaunchAngleHook::CalculatePlayerProjectileL
 			}
 		}
 
-		lastRayCoord = aimLocation;
+		auto equippedObject = a_player->GetEquippedObject( false );
+		if( equippedObject && equippedObject->IsWeapon() )
+		{
+			auto weapon = equippedObject->As<RE::TESObjectWEAP>();
+			if(  weapon &&
+				(weapon->IsBow() || weapon->IsCrossbow()) )
+			{
+				*out_pitch -= Settings::fArcheryPitchCalibration * degToRad;
+			}
+		}
+
 		rayImpactExpire = GetCurrentGameRuntimeMS() + 5000;
 	}
 }
@@ -292,9 +307,9 @@ float Hooks::PlayerSetAimPitchHook::PlayerGetAimPitch( RE::AIProcess* a_process,
 		if( currentPitch == FLT_MAX )
 			currentPitch = a_pitch;
 
-		if( player->GetWeaponState() == RE::WEAPON_STATE::kDrawn &&
-			player->GetAttackState() >= RE::ATTACK_STATE_ENUM::kBowDraw &&
-			player->GetAttackState() <= RE::ATTACK_STATE_ENUM::kBowFollowThrough )
+		if( player->AsActorState()->IsWeaponDrawn() &&
+			player->AsActorState()->GetAttackState() >= RE::ATTACK_STATE_ENUM::kBowDraw &&
+			player->AsActorState()->GetAttackState() <= RE::ATTACK_STATE_ENUM::kBowFollowThrough )
 		{
 			//auto camera				= RE::Main::WorldRootCamera();
 			auto screenSize			= RE::BSGraphics::Renderer::GetSingleton()->GetScreenSize();
@@ -305,7 +320,7 @@ float Hooks::PlayerSetAimPitchHook::PlayerGetAimPitch( RE::AIProcess* a_process,
 
 			RE::NiPoint3 lookTarget{0,0,0};
 			RE::CFilter filter;
-			player->GetActorRuntimeData().currentProcess->GetCharController()->GetCollisionFilterInfo( filter );
+			player->GetCollisionFilterInfo( filter );
 			GetScreenRaycastTarget(
 				crosshairX,
 				crosshairY,
@@ -327,11 +342,28 @@ float Hooks::PlayerSetAimPitchHook::PlayerGetAimPitch( RE::AIProcess* a_process,
 			// Add z-bias
 			lookTarget.z += Settings::fHeightBias;
 
-			// 3rd model firing angle to the crosshair ray
-			CalculateProjectileAngles( aimPos, lookTarget, lookPitch, lookYaw );
+			// 3rd person model firing angle adjustment
+			bool isAngleCalculated = false;
+			if( Settings::bEnabledPitchCorrection &&
+				Settings::iPitchCorrectionMode == (uint32_t)PitchCorrectionMode::kAutomatic )
+			{
+				auto projectile			= player->GetCurrentAmmo()->GetRuntimeData().data.projectile;
+				auto projectileSpeed	= projectile ? projectile->data.speed : 0;
+				auto projectileGravity	= projectile ? projectile->data.gravity : 0;
+				isAngleCalculated = SolveBallisticIntercept( 
+					aimPos, lookTarget, nullptr,
+					projectileSpeed, projectileGravity * GetWorldGravity(), 
+					&lookTarget, &lookPitch, &lookYaw );
+			}
+			
+			if( !isAngleCalculated )
+			{
+				CalculateProjectileAngles( aimPos, lookTarget, lookPitch, lookYaw );
+			}
 
 			// Fixed pitch adjustment
-			if( (PitchCorrectionMode)Settings::iPitchCorrectionMode == PitchCorrectionMode::kFixedAngle )
+			if( Settings::bEnabledPitchCorrection &&
+				Settings::iPitchCorrectionMode == (uint32_t)PitchCorrectionMode::kFixedAngle )
 			{
 				lookPitch -= Settings::fPitchOffsetDegree * degToRad;
 			}
@@ -381,38 +413,35 @@ void Hooks::ProjectileInitHook::OverrideProjectileInit( RE::Projectile* a_this, 
 		if( cameraState && cameraState->id == RE::CameraState::kMount )
 		{
 			auto biped = player->GetCurrentBiped();
-			if( biped )
+			if( biped &&
+				player->AsActorState()->GetAttackState() >= RE::ATTACK_STATE_ENUM::kBowReleasing &&
+				player->AsActorState()->GetAttackState() <= RE::ATTACK_STATE_ENUM::kBowReleased )
 			{
-				if( player->GetWeaponState() == RE::WEAPON_STATE::kDrawn &&
-					player->GetAttackState() >= RE::ATTACK_STATE_ENUM::kBowDraw &&
-					player->GetAttackState() <= RE::ATTACK_STATE_ENUM::kBowFollowThrough )
+				auto process = player->GetActorRuntimeData().currentProcess;
+				auto fireNode = process->GetWeaponNode( biped );
+
+				auto firePosition = fireNode->world.translate;
+				auto fireDirection = fireNode->world.rotate * RE::NiPoint3( 0, 1, 0 );
+
+				fireDirection.Unitize();
+
+				float horizontalSquared =
+					fireDirection.x * fireDirection.x +
+					fireDirection.y * fireDirection.y;
+
+				float lengthSquared = horizontalSquared + fireDirection.z * fireDirection.z;
+
+				if( lengthSquared > 1.e-6f && horizontalSquared > 1.e-6f )
 				{
-					auto process = player->GetActorRuntimeData().currentProcess;
-					auto fireNode = process->GetWeaponNode( biped );
+					// Only clamp yaw. Leave pitch as is.
+					//float angleX = atan2( -fireDirection.z, sqrt( horizontalSquared ) );
+					float angleZ = atan2( fireDirection.x, fireDirection.y );
 
-					auto firePosition = fireNode->world.translate;
-					auto fireDirection = fireNode->world.rotate * RE::NiPoint3( 0, 1, 0 );
+					float maxVisualDifference = Settings::fMountedYawTolerance * degToRad;
+					float yawDifference = std::remainder(a_angle.z - angleZ, 2.0f * std::numbers::pi_v<float>);
 
-					fireDirection.Unitize();
-
-					float horizontalSquared =
-						fireDirection.x * fireDirection.x +
-						fireDirection.y * fireDirection.y;
-
-					float lengthSquared = horizontalSquared + fireDirection.z * fireDirection.z;
-
-					if( lengthSquared > 1.e-6f && horizontalSquared > 1.e-6f )
-					{
-						// Only clamp yaw. Leave pitch as is.
-						//float angleX = atan2( -fireDirection.z, sqrt( horizontalSquared ) );
-						float angleZ = atan2( fireDirection.x, fireDirection.y );
-
-						float maxVisualDifference = Settings::fMountedYawTolerance * degToRad;
-						float yawDifference = std::remainder(a_angle.z - angleZ, 2.0f * std::numbers::pi_v<float>);
-
-						//a_angle.x = angleX;
-						a_angle.z = angleZ + std::clamp( yawDifference, -maxVisualDifference, maxVisualDifference );
-					}
+					//a_angle.x = angleX;
+					a_angle.z = angleZ + std::clamp( yawDifference, -maxVisualDifference, maxVisualDifference );
 				}
 			}
 		}

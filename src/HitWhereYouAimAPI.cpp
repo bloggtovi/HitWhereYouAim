@@ -22,8 +22,8 @@ namespace HWYA_API
 				{
 					features |= Feature::kAutomaticPitchCorrection;
 
-					if( Settings::bTargetDepthPrediction )
-						features |= Feature::kTargetDepthPrediction;
+					if( Settings::bEnabledTargetLeading )
+						features |= Feature::kTargetLeading;
 				}
 				else
 				{
@@ -31,8 +31,8 @@ namespace HWYA_API
 				}
 			}
 
-			if( Settings::bEnabledTargetLeading )
-				features |= Feature::kTargetLeading;
+			if( Settings::bTargetDepthPrediction )
+				features |= Feature::kTargetDepthPrediction;
 
 			return features;
 		}

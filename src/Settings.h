@@ -95,6 +95,7 @@ struct Settings
 
 	// Calibration
 	static inline float		fMaximumTargetDistance;
+	static inline float		fArcheryPitchCalibration;
 	static inline float		fCrosshairPosX;
 	static inline float		fCrosshairPosY;
 	static inline float		fRayPenetrationDepth;

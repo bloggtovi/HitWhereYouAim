@@ -21,6 +21,7 @@ void Settings::Load()
 	settings->RegisterBinding( { &fMaxLeadingAngle,			Settings::BindingType::kFloat,		"Main", "fMaxLeadingAngle",			45.0f } );
 
 	settings->RegisterBinding( { &fMaximumTargetDistance,	Settings::BindingType::kFloat,		"Calibration", "fMaximumTargetDistance",	100.0f } );
+	settings->RegisterBinding( { &fArcheryPitchCalibration,	Settings::BindingType::kFloat,		"Calibration", "fArcheryPitchCalibration",	0.02f } );
 	settings->RegisterBinding( { &fCrosshairPosX,			Settings::BindingType::kFloat,		"Calibration", "fCrosshairPosX",			0.0f } );
 	settings->RegisterBinding( { &fCrosshairPosY,			Settings::BindingType::kFloat,		"Calibration", "fCrosshairPosY",			0.0f } );
 	settings->RegisterBinding( { &fRayPenetrationDepth,		Settings::BindingType::kFloat,		"Calibration", "fRayPenetrationDepth",		0.2f } );
