@@ -13,7 +13,7 @@ void Settings::Load()
 	settings->RegisterBinding( { &bEnabled,					Settings::BindingType::kBoolean,	"Main", "bEnabled",					true } );
 	settings->RegisterBinding( { &bEnabledPitchCorrection,	Settings::BindingType::kBoolean,	"Main", "bEnabledPitchCorrection",	true } );
 	settings->RegisterBinding( { &iPitchCorrectionMode,		Settings::BindingType::kInteger,	"Main", "iPitchCorrectionMode",		1 } );
-	settings->RegisterBinding( { &fPitchOffsetDegree,		Settings::BindingType::kFloat,		"Main", "fPitchOffsetDegree",		7.0f } );
+	settings->RegisterBinding( { &fPitchOffsetDegree,		Settings::BindingType::kFloat,		"Main", "fPitchOffsetDegree",		0.7f } );
 	settings->RegisterBinding( { &bTargetDepthPrediction,	Settings::BindingType::kBoolean,	"Main", "bTargetDepthPrediction",	true } );
 	settings->RegisterBinding( { &fPredictionWindowWidth,	Settings::BindingType::kFloat,		"Main", "fPredictionWindowWidth",	0.5f } );
 	settings->RegisterBinding( { &fPredictionWindowHeight,	Settings::BindingType::kFloat,		"Main", "fPredictionWindowHeight",	0.5f } );

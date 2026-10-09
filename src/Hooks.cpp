@@ -13,6 +13,7 @@ bool Hooks::Install()
 
 // Crosshair raycast position cache
 CrosshairRaycastCache g_crosshairCache;
+static float pitchVelocity = 0.0f;
 
 RE::TESObjectREFR* Hooks::GetCrosshairRaycastTarget( uint32_t a_collisionGroup, RE::COL_LAYER a_collisionLayer, RE::NiPoint3* out_hitLocation, RE::bhkPickData* out_pickData )
 {
@@ -382,19 +383,48 @@ float Hooks::PlayerSetAimPitchHook::PlayerGetAimPitch( RE::AIProcess* a_process,
 			result = -lookPitch;
 
 			// Don't snap into place. Do it smoothly.
-			float maxRads = Settings::fMaxPitchAdjustmentSpeed * degToRad;
-			float maxDelta = maxRads * RE::BSTimer::GetSingleton()->delta;
+			float deltaTime = RE::BSTimer::GetSingleton()->delta;
+			float maxSpeed = Settings::fMaxPitchAdjustmentSpeed * degToRad;
+			float acceleration = maxSpeed * 4.0f; // Reach max speed in 0.25 sec
+
 			float delta = result - currentPitch;
-			if( abs( delta ) < maxDelta )
+			float distance = abs( delta );
+
+			if( distance < 0.00001f )
+			{
 				currentPitch = result;
+				pitchVelocity = 0.0f;
+			}
 			else
-				currentPitch += copysign( maxDelta, delta );
+			{
+				float direction = delta > 0 ? 1.0f : -1.0f;
+				float brakingSpeed = sqrt( 2.0f * acceleration * distance );
+				float targetVelocity = direction * std::min( maxSpeed, brakingSpeed );
+
+				pitchVelocity += std::clamp(
+					targetVelocity - pitchVelocity,
+					-acceleration * deltaTime,
+					acceleration * deltaTime );
+
+				float angleStep = pitchVelocity * deltaTime;
+
+				if( abs( angleStep ) >= distance && angleStep * delta > 0 )
+				{
+					currentPitch = result;
+					pitchVelocity = 0.0f;
+				}
+				else
+				{
+					currentPitch += angleStep;
+				}
+			}
 
 			result = currentPitch;
 		}
 		else
 		{
 			currentPitch = 0; // Reset when not firing
+			pitchVelocity = 0;
 		}
 	}
 
