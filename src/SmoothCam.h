@@ -252,6 +252,19 @@ private:
 
 	using GetInstance_t = void*( * )();
 
+	static bool IsVATSPlaying()
+	{
+		auto pcCamera = RE::PlayerCamera::GetSingleton();
+		if( pcCamera )
+		{
+			auto state = pcCamera->currentState;
+			if( state && state.get()->id == RE::CameraState::kVATS )
+				return true;
+		}
+
+		return false;
+	}
+
 	static void CameraRenderThunk( void* a_camera, void* a_context )
 	{
 		cameraRender( a_camera, a_context );
@@ -266,6 +279,9 @@ private:
 		std::scoped_lock lock( trailMutex );
 
 		UpdateTrail();
+
+		if( IsVATSPlaying() )
+			return;
 
 		if( worldTrailPoints.size() < 2 || !BuildProjectedSegments() )
 			return;
@@ -331,12 +347,31 @@ private:
 			return;
 		}
 
+		if( HasHitSomething( projectile ) )
+		{
+			active = false;
+			projectileHandle.reset();
+			return;
+		}
+
 		auto projectile3D = projectile->Get3D();
 
 		if( projectile3D )
 			AppendPosition( projectile3D->world.translate );
 		else
 			AppendPosition( projectile->GetPosition() );
+	}
+
+	static bool HasHitSomething( const RE::Projectile* a_projectile )
+	{
+		if( !a_projectile )
+			return false;
+
+		auto& runtimeData = a_projectile->GetProjectileRuntimeData();
+
+		return !runtimeData.impacts.empty() ||
+			runtimeData.flags.any( RE::Projectile::Flags::kProcessedImpacts ) ||
+			runtimeData.flags.any( RE::Projectile::Flags::kDestroyed );
 	}
 
 	static void AppendPosition( const RE::NiPoint3& a_position )
