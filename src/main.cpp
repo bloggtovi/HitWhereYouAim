@@ -3,6 +3,8 @@
 #include "Hooks.h"
 #include "Settings.h"
 #include "HitWhereYouAimAPI.h"
+#include "PDBHelper.h"
+#include "SmoothCam.h"
 
 float crosshairOriginalX = FLT_MAX;
 float crosshairOriginalY = FLT_MAX;
@@ -42,7 +44,11 @@ namespace
 		switch( a_message->type )
 		{
 		case SKSE::MessagingInterface::kDataLoaded:
-			REX::INFO( "{} {} loaded", Version::PROJECT.data(), Version::NAME.data());
+			{
+				REX::INFO( "{} {} loaded", Version::PROJECT.data(), Version::NAME.data());
+
+				SmoothCamArrowTrail::Install();
+			}
 			break;
 		case SKSE::MessagingInterface::kPostPostLoad:
 			// TDM Compatibility hook
@@ -60,6 +66,7 @@ namespace
 	{
 		Settings::Load();
 		ResetCrosshairPosition();
+		SmoothCamArrowTrail::SetEnabled( Settings::bShowLastProjectilePath );
 		REX::DEBUG( "Settings reloaded by MCM" );
 	}
 

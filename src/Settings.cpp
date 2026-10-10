@@ -35,6 +35,7 @@ void Settings::Load()
 	settings->RegisterBinding( { &bEnableLogging,			Settings::BindingType::kBoolean,	"Debug", "bEnableLogging",				false } );
 	settings->RegisterBinding( { &bShowTargetPredictionInfo,Settings::BindingType::kBoolean,	"Debug", "bShowTargetPredictionInfo",	false } );
 	settings->RegisterBinding( { &bShowCrosshairRayImpact,	Settings::BindingType::kBoolean,	"Debug", "bShowCrosshairRayImpact",		false } );
+	settings->RegisterBinding( { &bShowLastProjectilePath,	Settings::BindingType::kBoolean,	"Debug", "bShowLastProjectilePath",		false } );
 	
 	settings->Load( iniDefault );
 

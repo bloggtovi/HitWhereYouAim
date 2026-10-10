@@ -1,4 +1,6 @@
 #include "Hooks.h"
+#include "PDBHelper.h"
+#include "SmoothCam.h"
 
 bool Hooks::Install()
 {
@@ -14,6 +16,7 @@ bool Hooks::Install()
 // Crosshair raycast position cache
 CrosshairRaycastCache g_crosshairCache;
 static float pitchVelocity = 0.0f;
+static RE::NiPoint3 g_lastAimLocation;
 
 RE::TESObjectREFR* Hooks::GetCrosshairRaycastTarget( uint32_t a_collisionGroup, RE::COL_LAYER a_collisionLayer, RE::NiPoint3* out_hitLocation, RE::bhkPickData* out_pickData )
 {
@@ -331,7 +334,7 @@ float Hooks::PlayerSetAimPitchHook::PlayerGetAimPitch( RE::AIProcess* a_process,
 				nullptr,
 				Settings::fMaximumTargetDistance * meterToGameUnit );
 
-			float lookPitch = 0, lookYaw;
+			float lookPitch = 0, lookYaw = 0;
 			auto aimPos = player->GetPosition();
 
 			if( Settings::bEnabledPitchCorrection )
@@ -342,6 +345,8 @@ float Hooks::PlayerSetAimPitchHook::PlayerGetAimPitch( RE::AIProcess* a_process,
 
 			// Add z-bias
 			lookTarget.z += Settings::fHeightBias;
+
+			g_lastAimLocation = lookTarget;
 
 			// 3rd person model firing angle adjustment
 			bool isAngleCalculated = false;
@@ -477,5 +482,7 @@ void Hooks::ProjectileInitHook::OverrideProjectileInit( RE::Projectile* a_this, 
 		}
 
 		SetProjectileAngle( a_this, a_angle.x, a_angle.z );
+
+		SmoothCamArrowTrail::BeginArrow( a_this );
 	}
 }

@@ -63,6 +63,8 @@ set(sources ${headers}
 	src/BallisticSolver.h
 	src/Utils.h
 	src/HitWhereYouAimAPI.h
+	src/PDBHelper.h
+	src/SmoothCam.h
 )
 
 set(sources ${sources}
