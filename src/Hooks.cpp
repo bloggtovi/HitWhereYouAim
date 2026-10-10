@@ -129,7 +129,8 @@ void Hooks::PlayerProjectileCalculateLaunchAngleHook::CalculatePlayerProjectileL
 					rayDelta.Length(),
 					a_projectile,
 					Settings::fPredictionWindowWidth,
-					Settings::fPredictionWindowHeight );
+					Settings::fPredictionWindowHeight,
+					nullptr, isFixedAngle );
 
 				if( potentialTarget )
 				{

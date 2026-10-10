@@ -58,12 +58,17 @@ public:
 		if( !screenSize.width || !screenSize.height )
 			return;
 
+		bool fixedPitchMode =
+			Settings::bEnabledPitchCorrection &&
+			Settings::iPitchCorrectionMode == (uint32_t)PitchCorrectionMode::kFixedAngle;
+
 		GetPotentialPlayerTarget(
 			Settings::fMaximumTargetDistance * ( 1.0f / 0.0142875f ),
 			nullptr,
 			Settings::fPredictionWindowWidth,
 			Settings::fPredictionWindowHeight,
-			&debugInfo );
+			&debugInfo,
+			fixedPitchMode );
 
 		const auto& a_debugInfo = debugInfo;
 
@@ -73,8 +78,8 @@ public:
 			screenSize.height,
 			-a_debugInfo.xLimit,
 			a_debugInfo.xLimit,
-			-a_debugInfo.yLimit,
-			a_debugInfo.yLimit,
+			-a_debugInfo.yLimitDown,
+			a_debugInfo.yLimitUp,
 			a_duration,
 			selectionWindowColor,
 			1.0f );
@@ -144,7 +149,6 @@ public:
 			if( !candidate.isHostile )
 			{
 				float xInset = (projectedMax.x - projectedMin.x) * friendlyInset;
-				float yInset = (projectedMax.y - projectedMin.y) * friendlyInset;
 
 				DrawRectangle(
 					camera,
@@ -152,8 +156,8 @@ public:
 					screenSize.height,
 					projectedMin.x + xInset,
 					projectedMax.x - xInset,
-					projectedMin.y + yInset,
-					projectedMax.y - yInset,
+					projectedMin.y,
+					projectedMax.y,
 					a_duration,
 					friendlySelectionColor,
 					1.0f );

@@ -29,13 +29,15 @@ struct CandidateSelectionInfo
 {
 	std::vector<TargetCandidateInfo> candidates;
 	float xLimit = 0.25f;
-	float yLimit = 0.25f;
+	float yLimitUp = 0.25f;
+	float yLimitDown = 0.25f;
 
-	void Reset( float a_xLimit, float a_yLimit )
+	void Reset( float a_xLimit, float a_yLimitUp, float a_yLimitDown )
 	{
 		candidates.clear();
 		xLimit = a_xLimit;
-		yLimit = a_yLimit;
+		yLimitUp = a_yLimitUp;
+		yLimitDown = a_yLimitDown;
 	}
 };
 
@@ -418,13 +420,17 @@ static std::pair<RE::TESObjectREFR*,RE::NiPoint3> GetPotentialPlayerTarget(
 	RE::Projectile* a_projectile = nullptr,
 	float a_xLimit = 0.25f,
 	float a_yLimit = 0.25f,
-	CandidateSelectionInfo* out_debugInfo = nullptr )
+	CandidateSelectionInfo* out_debugInfo = nullptr,
+	bool a_fixedPitchMode = false )
 {
 	if( a_xLimit <= 0 ) a_xLimit = 0.0001f;
 	if( a_yLimit <= 0 ) a_yLimit = 0.0001f;
 
+	float yLimitUp = a_yLimit;
+	float yLimitDown = a_fixedPitchMode ? a_yLimit * 2.0f : a_yLimit;
+
 	if( out_debugInfo )
-		out_debugInfo->Reset( a_xLimit, a_yLimit );
+		out_debugInfo->Reset( a_xLimit, yLimitUp, yLimitDown );
 
 	auto processLists = RE::ProcessLists::GetSingleton();
 	auto player = RE::PlayerCharacter::GetSingleton();
@@ -528,7 +534,7 @@ static std::pair<RE::TESObjectREFR*,RE::NiPoint3> GetPotentialPlayerTarget(
 			bool insideSelectionWindow =
 				sweptBounds.valid &&
 				sweptBounds.max.x >= -a_xLimit && sweptBounds.min.x <= a_xLimit &&
-				sweptBounds.max.y >= -a_yLimit && sweptBounds.min.y <= a_yLimit;
+				sweptBounds.max.y >= -yLimitDown && sweptBounds.min.y <= yLimitUp;
 
 			if( debugCandidate )
 				debugCandidate->insideSelectionWindow = insideSelectionWindow;
@@ -539,11 +545,9 @@ static std::pair<RE::TESObjectREFR*,RE::NiPoint3> GetPotentialPlayerTarget(
 			if( !isHostile )
 			{
 				float xDepth = (projectedMax.x - projectedMin.x) * 0.1f;
-				float yDepth = (projectedMax.y - projectedMin.y) * 0.1f;
 
 				passedFriendlySelection =
-					projectedMin.x + xDepth <= 0 && projectedMax.x - xDepth >= 0 &&
-					projectedMin.y + yDepth <= 0 && projectedMax.y - yDepth >= 0;
+					projectedMin.x + xDepth <= 0 && projectedMax.x - xDepth >= 0;
 			}
 
 			if( debugCandidate )

@@ -224,3 +224,9 @@ constexpr uint64_t RELOCATION_RAW( const uint64_t se, const uint64_t ae )
 {
 	return Runtime::version <= SKSE::RUNTIME_SSE_1_5_97 ? se : ae;
 }
+
+enum class PitchCorrectionMode
+{
+	kAutomatic,
+	kFixedAngle,
+};

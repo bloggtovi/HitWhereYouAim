@@ -6,12 +6,6 @@
 #include "TrueHUDArrowTrail.h"
 #include "CandidateBoundsDebug.h"
 
-enum class PitchCorrectionMode
-{
-	kAutomatic,
-	kFixedAngle,
-};
-
 struct CrosshairRaycastCache
 {
 	RE::NiPoint3		position;
