@@ -36,24 +36,15 @@ public:
 		return enabled;
 	}
 
-	static void SetData( const CandidateSelectionInfo& a_debugInfo )
-	{
-		debugInfo = a_debugInfo;
-		hasData = true;
-	}
-
 	static void Clear()
 	{
 		debugInfo.candidates.clear();
-		hasData = false;
 	}
 
 	static void Update( float a_duration = 0.0f )
 	{
-		if( !enabled || !trueHUD || !hasData )
+		if( !enabled || !trueHUD )
 			return;
-
-		const auto& a_debugInfo = debugInfo;
 
 		auto ui = RE::UI::GetSingleton();
 		auto camera = RE::Main::WorldRootCamera();
@@ -66,6 +57,15 @@ public:
 
 		if( !screenSize.width || !screenSize.height )
 			return;
+
+		GetPotentialPlayerTarget(
+			Settings::fMaximumTargetDistance * ( 1.0f / 0.0142875f ),
+			nullptr,
+			Settings::fPredictionWindowWidth,
+			Settings::fPredictionWindowHeight,
+			&debugInfo );
+
+		const auto& a_debugInfo = debugInfo;
 
 		DrawRectangle(
 			camera,
@@ -81,8 +81,15 @@ public:
 
 		DrawCross( camera, screenSize.width, screenSize.height, a_duration );
 
+		auto player = RE::PlayerCharacter::GetSingleton();
+		float projectileSpeed = GetPlayerProjectileSpeed( player );
+
 		for( const auto& candidate : a_debugInfo.candidates )
 		{
+#ifndef _DEBUG
+			if( !candidate.hasLineOfSight )
+				continue;
+#endif
 			auto reference = candidate.handle.get();
 			if( !reference )
 				continue;
@@ -91,10 +98,36 @@ public:
 			if( !actor )
 				continue;
 
-			auto [projectedMin,projectedMax] = ProjectReferenceBoundsToScreen( camera, actor, 0, 0 );
+			float predictionTime = GetPredictionTime( player, actor, projectileSpeed );
+			auto currentBounds = ProjectReferenceBoundsToScreen( camera, actor, 0, 0 );
+			auto projectedBounds = predictionTime > 0 ?
+				ProjectReferenceBoundsToScreen( camera, actor, predictionTime, 0 ) :
+				currentBounds;
+			auto sweptBounds = GetSweptProjectedBounds( currentBounds, projectedBounds );
+
+			if( !projectedBounds.valid )
+				continue;
+
+			auto& projectedMin = projectedBounds.min;
+			auto& projectedMax = projectedBounds.max;
 
 			std::uint32_t color = GetCandidateColor( candidate );
 			float thickness = candidate.selected ? 2.0f : 1.0f;
+
+			if( predictionTime > 0 && sweptBounds.valid )
+			{
+				DrawRectangle(
+					camera,
+					screenSize.width,
+					screenSize.height,
+					sweptBounds.min.x,
+					sweptBounds.max.x,
+					sweptBounds.min.y,
+					sweptBounds.max.y,
+					a_duration,
+					sweepColor,
+					1.0f );
+			}
 
 			DrawRectangle(
 				camera,
@@ -128,13 +161,80 @@ public:
 		}
 	}
 
-	static void Draw( const CandidateSelectionInfo& a_debugInfo, float a_duration = 0.0f )
+private:
+	static RE::BGSProjectile* GetMagicProjectile( const RE::MagicItem* a_magicItem )
 	{
-		SetData( a_debugInfo );
-		Update( a_duration );
+		if( !a_magicItem )
+			return nullptr;
+
+		for( const auto effect : a_magicItem->effects )
+		{
+			if( effect && effect->baseEffect && effect->baseEffect->data.projectileBase )
+				return effect->baseEffect->data.projectileBase;
+		}
+
+		return nullptr;
 	}
 
-private:
+	static RE::BGSProjectile* GetEquippedMagicProjectile( RE::PlayerCharacter* a_player, bool a_leftHand )
+	{
+		if( !a_player )
+			return nullptr;
+
+		auto equippedObject = a_player->GetEquippedObject( a_leftHand );
+		auto spell = equippedObject ? equippedObject->As<RE::SpellItem>() : nullptr;
+		return GetMagicProjectile( spell );
+	}
+
+	static float GetPlayerProjectileSpeed( RE::PlayerCharacter* a_player )
+	{
+		if( !a_player )
+			return 0.0f;
+
+		auto rightObject = a_player->GetEquippedObject( false );
+		auto leftObject = a_player->GetEquippedObject( true );
+		auto rightWeapon = rightObject ? rightObject->As<RE::TESObjectWEAP>() : nullptr;
+		auto leftWeapon = leftObject ? leftObject->As<RE::TESObjectWEAP>() : nullptr;
+		bool hasRangedWeapon = (rightWeapon && rightWeapon->IsRanged()) || (leftWeapon && leftWeapon->IsRanged());
+
+		if( hasRangedWeapon )
+		{
+			auto ammo = a_player->GetCurrentAmmo();
+
+			if( ammo && ammo->data.projectile )
+				return ammo->data.projectile->data.speed;
+		}
+
+		if( auto projectile = GetEquippedMagicProjectile( a_player, false ) )
+			return projectile->data.speed;
+
+		if( auto projectile = GetEquippedMagicProjectile( a_player, true ) )
+			return projectile->data.speed;
+
+		return 0.0f;
+	}
+
+	static float GetPredictionTime( RE::PlayerCharacter* a_player, RE::Actor* a_target, float a_projectileSpeed )
+	{
+		if( !a_player || !a_target || a_projectileSpeed <= 0.0f )
+			return 0.0f;
+
+		auto target3D = a_target->Get3D2();
+		if( !target3D )
+			return 0.0f;
+
+		RE::NiPoint3 targetPosition = target3D->worldBound.center;
+		targetPosition.x = a_target->GetPositionX();
+		targetPosition.y = a_target->GetPositionY();
+
+		RE::NiPoint3 velocity;
+		a_target->GetLinearVelocity( velocity );
+
+		RE::NiPoint3 origin = a_player->GetPosition();
+		float predictionTime = (targetPosition - origin).Length() / a_projectileSpeed;
+		return (targetPosition + velocity * predictionTime - origin).Length() / a_projectileSpeed;
+	}
+
 	static void DrawRectangle(
 		RE::NiCamera* a_camera,
 		std::uint32_t a_screenWidth,
@@ -235,6 +335,7 @@ private:
 	static constexpr float centerMarkSize = 0.0125f;
 	static constexpr float projectionPlaneDistance = 100.0f;
 	static constexpr std::uint32_t selectionWindowColor = 0x00FFFFFF;
+	static constexpr std::uint32_t sweepColor = 0xFFFF00FF;
 	static constexpr std::uint32_t centerMarkColor = 0xFFFFFFFF;
 	static constexpr std::uint32_t hostileColor = 0xFF4000FF;
 	static constexpr std::uint32_t friendlyRejectedColor = 0xFF00FFFF;
@@ -246,5 +347,4 @@ private:
 	static inline TRUEHUD_API::IVTrueHUD3* trueHUD = nullptr;
 	static inline CandidateSelectionInfo debugInfo;
 	static inline bool enabled = false;
-	static inline bool hasData = false;
 };

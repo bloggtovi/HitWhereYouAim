@@ -4,6 +4,13 @@
 
 #include "BallisticSolver.h"
 
+struct ProjectedBounds
+{
+	RE::NiPoint2 min{ FLT_MAX, FLT_MAX };
+	RE::NiPoint2 max{ FLT_MAX, FLT_MAX };
+	bool valid = false;
+};
+
 struct TargetCandidateInfo
 {
 	RE::ObjectRefHandle handle;
@@ -323,10 +330,9 @@ static void ProjectBoundToScreen( const RE::NiCamera* a_camera, const RE::NiBoun
 	func( a_camera, a_bound, out_projectedMin, out_projectedMax, a_nearThreshold );
 }
 
-static std::pair<RE::NiPoint2, RE::NiPoint2> ProjectReferenceBoundsToScreen( const RE::NiCamera* a_camera, const RE::TESObjectREFR* a_ref, float a_predictionTime, float a_nearThreshold )
+static ProjectedBounds ProjectReferenceBoundsToScreen( const RE::NiCamera* a_camera, const RE::TESObjectREFR* a_ref, float a_predictionTime, float a_nearThreshold )
 {
-	RE::NiPoint2 projectedMin( FLT_MAX, FLT_MAX );
-	RE::NiPoint2 projectedMax( FLT_MAX, FLT_MAX );
+	ProjectedBounds result;
 
 	if( a_camera && a_ref )
 	{
@@ -344,6 +350,26 @@ static std::pair<RE::NiPoint2, RE::NiPoint2> ProjectReferenceBoundsToScreen( con
 			bound.center.x = a_ref->GetPositionX();
 			bound.center.y = a_ref->GetPositionY();
 			bound.center += moveDelta;
+
+			float normalizedX;
+			float normalizedY;
+			float depth;
+
+			if( !RE::NiCamera::WorldPtToScreenPt3(
+				a_camera->GetRuntimeData().worldToCam,
+				a_camera->GetRuntimeData2().port,
+				bound.center,
+				normalizedX,
+				normalizedY,
+				depth,
+				1.0e-5f ) )
+			{
+				return result;
+			}
+
+			if( depth <= 0.0f || depth >= 1.0f )
+				return result;
+
 			RE::NiPoint3 projectedYMin, projectedYMax;
 			ProjectBoundToScreen( a_camera, bound, projectedYMin, projectedYMax, a_nearThreshold );
 
@@ -351,15 +377,40 @@ static std::pair<RE::NiPoint2, RE::NiPoint2> ProjectReferenceBoundsToScreen( con
 			RE::NiPoint3 projectedXMin, projectedXMax;
 			ProjectBoundToScreen( a_camera, bound, projectedXMin, projectedXMax, a_nearThreshold );
 
-			projectedMin.x = projectedXMin.x;
-			projectedMin.y = projectedYMin.y;
+			if( projectedXMin.x == -1.0f && projectedXMax.x == 1.0f )
+				return result;
 
-			projectedMax.x = projectedXMax.x;
-			projectedMax.y = projectedYMax.y;
+			if( projectedYMin.y == -1.0f && projectedYMax.y == 1.0f )
+				return result;
+
+			result.min.x = projectedXMin.x;
+			result.min.y = projectedYMin.y;
+
+			result.max.x = projectedXMax.x;
+			result.max.y = projectedYMax.y;
+
+			result.valid = true;
 		}
 	}
 
-	return std::make_pair( projectedMin, projectedMax );
+	return result;
+}
+
+static ProjectedBounds GetSweptProjectedBounds( const ProjectedBounds& a_currentBounds, const ProjectedBounds& a_predictedBounds )
+{
+	if( !a_currentBounds.valid )
+		return a_predictedBounds;
+
+	if( !a_predictedBounds.valid )
+		return a_currentBounds;
+
+	ProjectedBounds result;
+	result.min.x = std::min( a_currentBounds.min.x, a_predictedBounds.min.x );
+	result.min.y = std::min( a_currentBounds.min.y, a_predictedBounds.min.y );
+	result.max.x = std::max( a_currentBounds.max.x, a_predictedBounds.max.x );
+	result.max.y = std::max( a_currentBounds.max.y, a_predictedBounds.max.y );
+	result.valid = true;
+	return result;
 }
 
 static std::pair<RE::TESObjectREFR*,RE::NiPoint3> GetPotentialPlayerTarget(
@@ -384,12 +435,14 @@ static std::pair<RE::TESObjectREFR*,RE::NiPoint3> GetPotentialPlayerTarget(
 
 	float distanceSquared = a_distance * a_distance;
 	float bestScore = FLT_MAX;
+	float bestDistanceSquared = FLT_MAX;
 	float projectileSpeed = a_projectile ? a_projectile->GetSpeed() : 0;
 
 	RE::NiPoint3 origin = a_projectile ? a_projectile->GetPosition() : player->GetPosition();
 
 	RE::Actor* targetCandidate = nullptr;
 	RE::NiPoint3 targetMoveDelta{ 0, 0, 0 };
+	bool bestContainsCrosshair = false;
 	bool isPlayerInCombat = player->IsInCombat();
 	for( auto highHandle : processLists->highActorHandles )
 	{
@@ -438,7 +491,13 @@ static std::pair<RE::TESObjectREFR*,RE::NiPoint3> GetPotentialPlayerTarget(
 				moveDelta = velocity * ttr;
 			}
 
-			auto [projectedMin, projectedMax] = ProjectReferenceBoundsToScreen( camera, highActor.get(), ttr, 0 );
+			auto currentBounds = ProjectReferenceBoundsToScreen( camera, highActor.get(), 0, 0 );
+			auto projectedBounds = ttr > 0 ?
+				ProjectReferenceBoundsToScreen( camera, highActor.get(), ttr, 0 ) :
+				currentBounds;
+			auto sweptBounds = GetSweptProjectedBounds( currentBounds, projectedBounds );
+			auto& projectedMin = projectedBounds.min;
+			auto& projectedMax = projectedBounds.max;
 
 			float hScore = abs( projectedMin.x + projectedMax.x ) / a_xLimit;
 			float vScore = abs( projectedMin.y + projectedMax.y ) / a_yLimit;
@@ -459,12 +518,7 @@ static std::pair<RE::TESObjectREFR*,RE::NiPoint3> GetPotentialPlayerTarget(
 				debugCandidate = &out_debugInfo->candidates.back();
 			}
 
-			if( !debugCandidate && score >= bestScore )
-				continue;
-
-			bool validProjection =
-				!(projectedMin.x == -1.0F && projectedMax.x == 1.0F) &&
-				!(projectedMin.y == -1.0F && projectedMax.y == 1.0F);
+			bool validProjection = projectedBounds.valid;
 
 			if( debugCandidate )
 				debugCandidate->validProjection = validProjection;
@@ -472,8 +526,9 @@ static std::pair<RE::TESObjectREFR*,RE::NiPoint3> GetPotentialPlayerTarget(
 				continue;
 
 			bool insideSelectionWindow =
-				projectedMax.x >= -a_xLimit && projectedMin.x <= a_xLimit &&
-				projectedMax.y >= -a_yLimit && projectedMin.y <= a_yLimit;
+				sweptBounds.valid &&
+				sweptBounds.max.x >= -a_xLimit && sweptBounds.min.x <= a_xLimit &&
+				sweptBounds.max.y >= -a_yLimit && sweptBounds.min.y <= a_yLimit;
 
 			if( debugCandidate )
 				debugCandidate->insideSelectionWindow = insideSelectionWindow;
@@ -496,6 +551,28 @@ static std::pair<RE::TESObjectREFR*,RE::NiPoint3> GetPotentialPlayerTarget(
 			else if( !passedFriendlySelection )
 				continue;
 
+			bool containsCrosshair =
+				projectedMin.x <= 0 && projectedMax.x >= 0 &&
+				projectedMin.y <= 0 && projectedMax.y >= 0;
+
+			if( !isHostile )
+				containsCrosshair = passedFriendlySelection;
+
+			if( !debugCandidate )
+			{
+				if( bestContainsCrosshair && !containsCrosshair )
+					continue;
+
+				if( containsCrosshair == bestContainsCrosshair )
+				{
+					if( containsCrosshair && actorDistanceSquared >= bestDistanceSquared )
+						continue;
+
+					if( !containsCrosshair && score >= bestScore )
+						continue;
+				}
+			}
+
 			bool hasLineOfSight = false;
 
 			if( debugCandidate || validProjection && insideSelectionWindow && passedFriendlySelection )
@@ -510,9 +587,23 @@ static std::pair<RE::TESObjectREFR*,RE::NiPoint3> GetPotentialPlayerTarget(
 				passedFriendlySelection &&
 				hasLineOfSight;
 
-			if( !eligible || score >= bestScore )
+			if( !eligible )
 				continue;
 
+			bool isBetterCandidate = false;
+
+			if( containsCrosshair != bestContainsCrosshair )
+				isBetterCandidate = containsCrosshair;
+			else if( containsCrosshair )
+				isBetterCandidate = actorDistanceSquared < bestDistanceSquared;
+			else
+				isBetterCandidate = score < bestScore;
+
+			if( !isBetterCandidate )
+				continue;
+
+			bestContainsCrosshair = containsCrosshair;
+			bestDistanceSquared = actorDistanceSquared;
 			bestScore = score;
 			targetCandidate = highActor.get();
 			targetMoveDelta = moveDelta;

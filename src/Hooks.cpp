@@ -125,16 +125,11 @@ void Hooks::PlayerProjectileCalculateLaunchAngleHook::CalculatePlayerProjectileL
 			{
 				// Clamp depth to potential target if there is one
 				RE::NiPoint3 rayDelta = camera->world.translate - aimLocation;
-				CandidateSelectionInfo candidateDbgInfo;
 				auto [potentialTarget,predictPos] = GetPotentialPlayerTarget(
 					rayDelta.Length(),
 					a_projectile,
 					Settings::fPredictionWindowWidth,
-					Settings::fPredictionWindowHeight,
-					CandidateBoundsDebug::IsEnabled() ? &candidateDbgInfo : nullptr );
-
-				if( CandidateBoundsDebug::IsEnabled() )
-					CandidateBoundsDebug::SetData( candidateDbgInfo );
+					Settings::fPredictionWindowHeight );
 
 				if( potentialTarget )
 				{
