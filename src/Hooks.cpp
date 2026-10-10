@@ -7,6 +7,7 @@ bool Hooks::Install()
 	PlayerProjectileCalculateLaunchAngleHook::Install();
 	ConcentrationSpellAngleHook::Install();
 	PlayerSetAimPitchHook::Install();
+	PlayerUpdateHook::Install();
 
 	return true;
 }
@@ -124,7 +125,17 @@ void Hooks::PlayerProjectileCalculateLaunchAngleHook::CalculatePlayerProjectileL
 			{
 				// Clamp depth to potential target if there is one
 				RE::NiPoint3 rayDelta = camera->world.translate - aimLocation;
-				auto [potentialTarget,predictPos] = GetPotentialPlayerTarget( rayDelta.Length(), a_projectile, Settings::fPredictionWindowWidth, Settings::fPredictionWindowHeight);
+				CandidateSelectionInfo candidateDbgInfo;
+				auto [potentialTarget,predictPos] = GetPotentialPlayerTarget(
+					rayDelta.Length(),
+					a_projectile,
+					Settings::fPredictionWindowWidth,
+					Settings::fPredictionWindowHeight,
+					CandidateBoundsDebug::IsEnabled() ? &candidateDbgInfo : nullptr );
+
+				if( CandidateBoundsDebug::IsEnabled() )
+					CandidateBoundsDebug::SetData( candidateDbgInfo );
+
 				if( potentialTarget )
 				{
 					auto predictedDist = (predictPos - camera->world.translate).Length();
@@ -477,5 +488,7 @@ void Hooks::ProjectileInitHook::OverrideProjectileInit( RE::Projectile* a_this, 
 		}
 
 		SetProjectileAngle( a_this, a_angle.x, a_angle.z );
+
+		TrueHUDArrowTrail::BeginArrow( a_this );
 	}
 }

@@ -3,6 +3,8 @@
 #include "Utils.h"
 #include "BallisticSolver.h"
 #include "Settings.h"
+#include "TrueHUDArrowTrail.h"
+#include "CandidateBoundsDebug.h"
 
 enum class PitchCorrectionMode
 {
@@ -177,6 +179,26 @@ namespace Hooks
 
 				stl::write_thunk_call<ProjectileInitHook>( addr );
 			}
+		}
+	};
+
+	struct PlayerUpdateHook
+	{
+		static void thunk( RE::PlayerCharacter* a_this, float a_delta )
+		{
+			func( a_this, a_delta );
+			TrueHUDArrowTrail::Update();
+			CandidateBoundsDebug::Update();
+		}
+
+		static inline REL::Relocation<decltype( thunk )> func;
+		static inline size_t size = 0xAD;
+		static void Install()
+		{
+			REL::Relocation<std::uintptr_t> vtable{ RE::VTABLE_PlayerCharacter[0] };
+			stl::write_vfunc<RE::PlayerCharacter,PlayerUpdateHook>();
+
+			REX::DEBUG( "PlayerCharacter::Update hook installed" );
 		}
 	};
 

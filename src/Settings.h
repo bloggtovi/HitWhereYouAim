@@ -111,5 +111,7 @@ struct Settings
 	static inline bool		bEnableLogging;
 	static inline bool		bShowTargetPredictionInfo;
 	static inline bool		bShowCrosshairRayImpact;
+	static inline bool		bShowLastProjectilePath;
+	static inline bool		bEnabledTargetPrediction;
 };
 

@@ -4,6 +4,34 @@
 
 #include "BallisticSolver.h"
 
+struct TargetCandidateInfo
+{
+	RE::ObjectRefHandle handle;
+	float verticalRadius = 0.0f;
+	float horizontalRadius = 0.0f;
+	float score = FLT_MAX;
+	bool isHostile = false;
+	bool validProjection = false;
+	bool insideSelectionWindow = false;
+	bool passedFriendlySelection = false;
+	bool hasLineOfSight = false;
+	bool selected = false;
+};
+
+struct CandidateSelectionInfo
+{
+	std::vector<TargetCandidateInfo> candidates;
+	float xLimit = 0.25f;
+	float yLimit = 0.25f;
+
+	void Reset( float a_xLimit, float a_yLimit )
+	{
+		candidates.clear();
+		xLimit = a_xLimit;
+		yLimit = a_yLimit;
+	}
+};
+
 static float havokScaling = 0.0142875f;
 
 static bool SolveBallisticIntercept( const RE::NiPoint3& a_origin, const RE::NiPoint3& a_target, const RE::NiPoint3* a_targetVelocity,
@@ -18,12 +46,12 @@ static bool SolveBallisticIntercept( const RE::NiPoint3& a_origin, const RE::NiP
 
 	BallisticSolver::Result result;
 	if( BallisticSolver::Solve(
-			solverOrigin,
-			solverTarget, 
-			solverTargetVelocity,
-			a_projectileSpeed,
-			a_projectileGravity,
-			result, false) )
+		solverOrigin,
+		solverTarget, 
+		solverTargetVelocity,
+		a_projectileSpeed,
+		a_projectileGravity,
+		result, false) )
 	{
 		// Convert back to Skyrim coord
 		if( out_intercept )
@@ -186,7 +214,7 @@ static RE::NiPoint3* CalculatePredictedProjectileAimPoint( RE::NiPoint3* a_outAi
 		(
 			a_gravity * horizontalDistanceSquared +
 			2.0F * z_delta * speedSquared
-		);
+			);
 
 	// Return if cannot reach the target
 	if( discriminant <= 0 )
@@ -258,15 +286,15 @@ static RE::TESObjectREFR* GetScreenRaycastTarget( uint32_t a_x, uint32_t a_y, ui
 
 	RE::NiPoint3 origin, direction;
 	camera->WindowPointToRay( a_x, a_y, origin, direction, (float)screenSize.width, (float)screenSize.height );
-	
+
 	RE::NiPoint3 target = camera->world.translate + direction * a_maxDistance;
 	return GetRaycastTarget( camera->world.translate, target, a_collisionGroup, a_collisionLayer, out_hitLocation, out_pickData );
 }
 
 static void UpdateAutoAimTarget( RE::PlayerCharacter* a_player, float a_maxDistance, bool a_alternateMode )
 {
-		using func_t = decltype(&UpdateAutoAimTarget);
-		static REL::Relocation<func_t> func{ RELOCATION_ID(40243, 41246) };
+	using func_t = decltype(&UpdateAutoAimTarget);
+	static REL::Relocation<func_t> func{ RELOCATION_ID(40243, 41246) };
 	func( a_player, a_maxDistance, a_alternateMode );
 }
 
@@ -295,10 +323,57 @@ static void ProjectBoundToScreen( const RE::NiCamera* a_camera, const RE::NiBoun
 	func( a_camera, a_bound, out_projectedMin, out_projectedMax, a_nearThreshold );
 }
 
-static std::pair<RE::TESObjectREFR*,RE::NiPoint3> GetPotentialPlayerTarget( float a_distance, RE::Projectile* a_projectile = nullptr, float a_xLimit = 0.25f, float a_yLimit = 0.25f )
+static std::pair<RE::NiPoint2, RE::NiPoint2> ProjectReferenceBoundsToScreen( const RE::NiCamera* a_camera, const RE::TESObjectREFR* a_ref, float a_predictionTime, float a_nearThreshold )
+{
+	RE::NiPoint2 projectedMin( FLT_MAX, FLT_MAX );
+	RE::NiPoint2 projectedMax( FLT_MAX, FLT_MAX );
+
+	if( a_camera && a_ref )
+	{
+		auto ref3D = a_ref->Get3D2();
+		if( ref3D )
+		{
+			RE::NiBound bound = ref3D->worldBound;
+			RE::NiPoint3 moveDelta{ 0, 0, 0 };
+
+			// Predict future position before projecting onto the screen
+			RE::NiPoint3 velocity;
+			a_ref->GetLinearVelocity( velocity );
+			moveDelta = velocity * a_predictionTime;
+
+			bound.center.x = a_ref->GetPositionX();
+			bound.center.y = a_ref->GetPositionY();
+			bound.center += moveDelta;
+			RE::NiPoint3 projectedYMin, projectedYMax;
+			ProjectBoundToScreen( a_camera, bound, projectedYMin, projectedYMax, a_nearThreshold );
+
+			bound.radius = a_ref->GetBoundMax().x;
+			RE::NiPoint3 projectedXMin, projectedXMax;
+			ProjectBoundToScreen( a_camera, bound, projectedXMin, projectedXMax, a_nearThreshold );
+
+			projectedMin.x = projectedXMin.x;
+			projectedMin.y = projectedYMin.y;
+
+			projectedMax.x = projectedXMax.x;
+			projectedMax.y = projectedYMax.y;
+		}
+	}
+
+	return std::make_pair( projectedMin, projectedMax );
+}
+
+static std::pair<RE::TESObjectREFR*,RE::NiPoint3> GetPotentialPlayerTarget(
+	float a_distance,
+	RE::Projectile* a_projectile = nullptr,
+	float a_xLimit = 0.25f,
+	float a_yLimit = 0.25f,
+	CandidateSelectionInfo* out_debugInfo = nullptr )
 {
 	if( a_xLimit <= 0 ) a_xLimit = 0.0001f;
 	if( a_yLimit <= 0 ) a_yLimit = 0.0001f;
+
+	if( out_debugInfo )
+		out_debugInfo->Reset( a_xLimit, a_yLimit );
 
 	auto processLists = RE::ProcessLists::GetSingleton();
 	auto player = RE::PlayerCharacter::GetSingleton();
@@ -348,6 +423,7 @@ static std::pair<RE::TESObjectREFR*,RE::NiPoint3> GetPotentialPlayerTarget( floa
 
 			RE::NiBound bound = actor3D->worldBound;
 			RE::NiPoint3 moveDelta{ 0, 0, 0 };
+			float ttr = 0;
 
 			// Predict future position before projecting onto the screen
 			if( projectileSpeed > 0 )
@@ -356,57 +432,104 @@ static std::pair<RE::TESObjectREFR*,RE::NiPoint3> GetPotentialPlayerTarget( floa
 				highActor->GetLinearVelocity( velocity );
 
 				// Simple two pass predictor
-				float	ttr = CalculateProjectileFlightTimeToTarget( origin, bound.center					, projectileSpeed );
-						ttr = CalculateProjectileFlightTimeToTarget( origin, bound.center + velocity * ttr	, projectileSpeed );
+				ttr = CalculateProjectileFlightTimeToTarget( origin, bound.center,					projectileSpeed );
+				ttr = CalculateProjectileFlightTimeToTarget( origin, bound.center + velocity * ttr, projectileSpeed );
 
 				moveDelta = velocity * ttr;
 			}
 
-			bound.center += moveDelta;
+			auto [projectedMin, projectedMax] = ProjectReferenceBoundsToScreen( camera, highActor.get(), ttr, 0 );
 
-			RE::NiPoint3 projectedYMin,projectedYMax;
-			ProjectBoundToScreen( camera, bound, projectedYMin, projectedYMax, 0 );
-
-			bound.radius =  highActor->GetBoundMax().x;
-			RE::NiPoint3 projectedXMin,projectedXMax;
-			ProjectBoundToScreen( camera, bound, projectedXMin, projectedXMax, 0 );
-
-			float hScore = abs( projectedXMin.x + projectedXMax.x ) / a_xLimit;
-			float vScore = abs( projectedYMin.y + projectedYMax.y ) / a_yLimit;
+			float hScore = abs( projectedMin.x + projectedMax.x ) / a_xLimit;
+			float vScore = abs( projectedMin.y + projectedMax.y ) / a_yLimit;
 			float score = hScore * hScore + vScore * vScore;
-			if( score >= bestScore )
-				continue;
 
-			if( projectedXMin.x == -1.0F && projectedXMax.x == 1.0F )
-				continue;
-			if( projectedXMax.x < -a_xLimit || projectedXMin.x > a_xLimit )
-				continue;
-
-			if( projectedYMin.y == -1.0F && projectedYMax.y == 1.0F )
-				continue;
-			if( projectedYMax.y < -a_yLimit || projectedYMin.y > a_yLimit )
-				continue;
-
-			if( !isHostile )
+			TargetCandidateInfo* debugCandidate = nullptr;
+			if( out_debugInfo )
 			{
-				float xDepth = ( projectedXMax.x - projectedXMin.x ) * 0.1f;
-				float yDepth = ( projectedYMax.y - projectedYMin.y ) * 0.1f;
-				if( projectedXMin.x + xDepth > 0 || projectedXMax.x - xDepth < 0 )
-					continue;
-				if( projectedYMin.y + yDepth > 0 || projectedYMax.y - yDepth < 0 )
-					continue;
+				out_debugInfo->candidates.push_back(
+					{
+						highActor->GetHandle(),
+						bound.radius,
+						highActor->GetBoundMax().x,
+						score,
+						isHostile
+					} );
+
+				debugCandidate = &out_debugInfo->candidates.back();
 			}
 
-			// Reject target we can't see
-			//auto result = RequestDetectionResult( player, highActor.get(), RE::DETECTION_PRIORITY::kCritical );
-			auto result = HasLineOfSight( player, highActor.get() );
-			if( result == 0 )
+			if( !debugCandidate && score >= bestScore )
+				continue;
+
+			bool validProjection =
+				!(projectedMin.x == -1.0F && projectedMax.x == 1.0F) &&
+				!(projectedMin.y == -1.0F && projectedMax.y == 1.0F);
+
+			if( debugCandidate )
+				debugCandidate->validProjection = validProjection;
+			else if( !validProjection )
+				continue;
+
+			bool insideSelectionWindow =
+				projectedMax.x >= -a_xLimit && projectedMin.x <= a_xLimit &&
+				projectedMax.y >= -a_yLimit && projectedMin.y <= a_yLimit;
+
+			if( debugCandidate )
+				debugCandidate->insideSelectionWindow = insideSelectionWindow;
+			else if( !insideSelectionWindow )
+				continue;
+
+			bool passedFriendlySelection = true;
+			if( !isHostile )
+			{
+				float xDepth = (projectedMax.x - projectedMin.x) * 0.1f;
+				float yDepth = (projectedMax.y - projectedMin.y) * 0.1f;
+
+				passedFriendlySelection =
+					projectedMin.x + xDepth <= 0 && projectedMax.x - xDepth >= 0 &&
+					projectedMin.y + yDepth <= 0 && projectedMax.y - yDepth >= 0;
+			}
+
+			if( debugCandidate )
+				debugCandidate->passedFriendlySelection = passedFriendlySelection;
+			else if( !passedFriendlySelection )
+				continue;
+
+			bool hasLineOfSight = false;
+
+			if( debugCandidate || validProjection && insideSelectionWindow && passedFriendlySelection )
+				hasLineOfSight = HasLineOfSight( player, highActor.get() );
+
+			if( debugCandidate )
+				debugCandidate->hasLineOfSight = hasLineOfSight;
+
+			bool eligible =
+				validProjection &&
+				insideSelectionWindow &&
+				passedFriendlySelection &&
+				hasLineOfSight;
+
+			if( !eligible || score >= bestScore )
 				continue;
 
 			bestScore = score;
-
 			targetCandidate = highActor.get();
 			targetMoveDelta = moveDelta;
+		}
+	}
+
+	if( out_debugInfo && targetCandidate )
+	{
+		auto targetHandle = targetCandidate->GetHandle();
+
+		for( auto& candidate : out_debugInfo->candidates )
+		{
+			if( candidate.handle == targetHandle )
+			{
+				candidate.selected = true;
+				break;
+			}
 		}
 	}
 

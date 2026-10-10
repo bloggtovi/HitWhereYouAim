@@ -3,6 +3,8 @@
 #include "Hooks.h"
 #include "Settings.h"
 #include "HitWhereYouAimAPI.h"
+#include "TrueHUDArrowTrail.h"
+#include "CandidateBoundsDebug.h"
 
 float crosshairOriginalX = FLT_MAX;
 float crosshairOriginalY = FLT_MAX;
@@ -44,6 +46,10 @@ namespace
 		case SKSE::MessagingInterface::kDataLoaded:
 			REX::INFO( "{} {} loaded", Version::PROJECT.data(), Version::NAME.data());
 			break;
+		case SKSE::MessagingInterface::kPostLoad:
+			TrueHUDArrowTrail::Install();
+			CandidateBoundsDebug::Install();
+			break;
 		case SKSE::MessagingInterface::kPostPostLoad:
 			// TDM Compatibility hook
 			Hooks::ProjectileInitHook::Install();
@@ -60,6 +66,8 @@ namespace
 	{
 		Settings::Load();
 		ResetCrosshairPosition();
+		TrueHUDArrowTrail::SetEnabled( Settings::bShowLastProjectilePath );
+		CandidateBoundsDebug::SetEnabled( Settings::bEnabledTargetPrediction );
 		REX::DEBUG( "Settings reloaded by MCM" );
 	}
 
@@ -95,7 +103,7 @@ SKSEPluginLoad( const SKSE::LoadInterface* a_skse )
 		return false;
 
 	Hooks::Install();
-	Settings::Load();
+	ReloadSettings( nullptr );
 
 	return true;
 }
