@@ -39,12 +39,37 @@ SKSE_PLUGIN_VERSION = []() {
 
 namespace
 {
+	class CellChangeHandler final : public RE::BSTEventSink<RE::BGSActorCellEvent>
+	{
+	public:
+		static CellChangeHandler* GetSingleton()
+		{
+			static CellChangeHandler singleton;
+			return &singleton;
+		}
+		RE::BSEventNotifyControl ProcessEvent( const RE::BGSActorCellEvent* a_event, RE::BSTEventSource<RE::BGSActorCellEvent>* ) override
+		{
+			switch( a_event->flags.get() )
+			{
+			case RE::BGSActorCellEvent::CellFlag::kEnter:
+				TrueHUDArrowTrail::Stop();
+				break;
+			}
+
+			return RE::BSEventNotifyControl::kContinue;
+		}
+	};
+
 	static void SKSEMessageHandler( SKSE::MessagingInterface::Message* a_message ) 
 	{
 		switch( a_message->type )
 		{
 		case SKSE::MessagingInterface::kDataLoaded:
 			REX::INFO( "{} {} loaded", Version::PROJECT.data(), Version::NAME.data());
+			RE::PlayerCharacter::GetSingleton()->AsBGSActorCellEventSource()->AddEventSink( CellChangeHandler::GetSingleton() );
+			break;
+		case SKSE::MessagingInterface::kPreLoadGame:
+			TrueHUDArrowTrail::Stop();
 			break;
 		case SKSE::MessagingInterface::kPostLoad:
 			TrueHUDArrowTrail::Install();

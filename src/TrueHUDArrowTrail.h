@@ -14,8 +14,7 @@ class TrueHUDArrowTrail
 public:
 	static bool Install()
 	{
-		trueHUD = static_cast<TRUEHUD_API::IVTrueHUD3*>(
-			TRUEHUD_API::RequestPluginAPI( TRUEHUD_API::InterfaceVersion::V3 ) );
+		trueHUD = (TRUEHUD_API::IVTrueHUD3*)TRUEHUD_API::RequestPluginAPI( TRUEHUD_API::InterfaceVersion::V3 );
 
 		if( !trueHUD )
 		{
@@ -74,10 +73,14 @@ public:
 
 		const RE::NiPoint3& cameraPosition = camera->world.translate;
 
-		for( std::size_t i = 1; i < worldTrailPoints.size(); i++ )
+		for( size_t i = 1; i < worldTrailPoints.size(); i++ )
 		{
-			const RE::NiPoint3& start = worldTrailPoints[i - 1];
-			const RE::NiPoint3& end = worldTrailPoints[i];
+			RE::NiPoint3 start = worldTrailPoints[i - 1];
+			RE::NiPoint3 end = worldTrailPoints[i];
+
+			if( !ClipSegmentToNearPlane( camera, start, end ) )
+				continue;
+
 			float width = GetSegmentWidth( start, end, cameraPosition );
 
 			trueHUD->DrawLine( start, end, 0.0f, color, width );
@@ -103,10 +106,10 @@ public:
 	{
 		std::scoped_lock lock( trailMutex );
 
-		std::uint32_t red = ToColorByte( a_red );
-		std::uint32_t green = ToColorByte( a_green );
-		std::uint32_t blue = ToColorByte( a_blue );
-		std::uint32_t alpha = ToColorByte( a_alpha );
+		uint32_t red = ToColorByte( a_red );
+		uint32_t green = ToColorByte( a_green );
+		uint32_t blue = ToColorByte( a_blue );
+		uint32_t alpha = ToColorByte( a_alpha );
 
 		color = red << 24 | green << 16 | blue << 8 | alpha;
 	}
@@ -123,11 +126,7 @@ public:
 		maximumPointCount = std::max<std::size_t>( a_count, 2 );
 	}
 
-	static void SetDistanceWidthScaling(
-		bool a_enabled,
-		float a_referenceDistance,
-		float a_minimumWidth,
-		float a_maximumWidth )
+	static void SetDistanceWidthScaling( bool a_enabled, float a_referenceDistance, float a_minimumWidth, float a_maximumWidth )
 	{
 		std::scoped_lock lock( trailMutex );
 
@@ -227,10 +226,71 @@ private:
 			worldTrailPoints.erase( worldTrailPoints.begin() );
 	}
 
-	static float GetSegmentWidth(
-		const RE::NiPoint3& a_start,
-		const RE::NiPoint3& a_end,
-		const RE::NiPoint3& a_cameraPosition )
+	static bool GetCameraNearPlane(	RE::NiCamera* a_camera,	RE::NiPoint3& out_planePosition, RE::NiPoint3& out_planeNormal )
+	{
+		auto renderer = RE::BSGraphics::Renderer::GetSingleton();
+		if( !a_camera || !renderer )
+			return false;
+
+		auto screenSize = renderer->GetScreenSize();
+		if( !screenSize.width || !screenSize.height )
+			return false;
+
+		RE::NiPoint3 rayOrigin;
+		if( !a_camera->WindowPointToRay(
+			(int32_t)( screenSize.width / 2 ),
+			(int32_t)( screenSize.height / 2 ),
+			rayOrigin,
+			out_planeNormal,
+			(float)screenSize.width,
+			(float)screenSize.height ) )
+		{
+			return false;
+		}
+
+		out_planeNormal.Unitize();
+
+		const auto& runtimeData = a_camera->GetRuntimeData2();
+		float nearDistance = std::max( runtimeData.viewFrustum.fNear, runtimeData.minNearPlaneDist );
+		out_planePosition = rayOrigin + out_planeNormal * nearDistance;
+		return true;
+	}
+
+	static bool ClipSegmentToNearPlane( RE::NiCamera* a_camera, RE::NiPoint3& a_start, RE::NiPoint3& a_end )
+	{
+		RE::NiPoint3 planePosition;
+		RE::NiPoint3 planeNormal;
+
+		if( !GetCameraNearPlane( a_camera, planePosition, planeNormal ) )
+			return false;
+
+		float startDistance = (a_start - planePosition).Dot( planeNormal );
+		float endDistance = (a_end - planePosition).Dot( planeNormal );
+		bool startVisible = startDistance >= 0.0f;
+		bool endVisible = endDistance >= 0.0f;
+
+		if( !startVisible && !endVisible )
+			return false;
+
+		if( startVisible && endVisible )
+			return true;
+
+		float denominator = endDistance - startDistance;
+		if( abs( denominator ) <= 0.000001f )
+			return false;
+
+		float t = std::clamp( -startDistance / denominator, 0.0f, 1.0f );
+		RE::NiPoint3 intersection = a_start + (a_end - a_start) * t;
+
+		if( startVisible )
+			a_end = intersection;
+		else
+			a_start = intersection;
+
+		return true;
+	}
+
+	static float GetSegmentWidth( const RE::NiPoint3& a_start, const RE::NiPoint3& a_end, const RE::NiPoint3& a_cameraPosition )
 	{
 		if( !scaleWidthByDistance )
 			return trailWidth;
@@ -250,22 +310,22 @@ private:
 		return std::clamp( width, minimumTrailWidth, maximumTrailWidth );
 	}
 
-	static std::uint32_t ToColorByte( float a_value )
+	static uint32_t ToColorByte( float a_value )
 	{
-		return static_cast<std::uint32_t>( std::clamp( a_value, 0.0f, 1.0f ) * 255.0f + 0.5f );
+		return (uint32_t)( std::clamp( a_value, 0.0f, 1.0f ) * 255.0f + 0.5f );
 	}
 
 	static inline TRUEHUD_API::IVTrueHUD3* trueHUD = nullptr;
 	static inline RE::ObjectRefHandle projectileHandle;
 	static inline std::vector<RE::NiPoint3> worldTrailPoints;
 	static inline std::mutex trailMutex;
-	static inline std::uint32_t color = 0xFF400DFF;
+	static inline uint32_t color = 0xFF400DFF;
 	static inline float trailWidth = 3.0f;
 	static inline float minimumPointDistance = 5.0f;
 	static inline float widthReferenceDistance = 1000.0f;
-	static inline float minimumTrailWidth = 1.0f;
+	static inline float minimumTrailWidth = 0.5f;
 	static inline float maximumTrailWidth = 6.0f;
-	static inline std::size_t maximumPointCount = 256;
+	static inline size_t maximumPointCount = 256;
 	static inline bool scaleWidthByDistance = true;
 	static inline bool active = false;
 	static inline bool enabled = true;

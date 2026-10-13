@@ -63,6 +63,8 @@ set(sources ${headers}
 	src/BallisticSolver.h
 	src/Utils.h
 	src/HitWhereYouAimAPI.h
+	src/TrueHUDAPI.h
+	src/TrueHUDArrowTrail.h
 )
 
 set(sources ${sources}

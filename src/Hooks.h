@@ -200,11 +200,16 @@ namespace Hooks
 
 	namespace Test
 	{
-		struct PlayerSetGraphVarFloatHook
+		struct SetGraphVarFloatHook
 		{
-			static bool thunk( RE::PlayerCharacter* a_this, RE::BSFixedString& a_name, float a_value )
+			static bool thunk( RE::TESForm* a_this, RE::BSFixedString& a_name, float a_value )
 			{
-				REX::INFO( "Player::SetGraphVariableFloat {} = {}"sv, a_name.c_str(), a_value);
+				auto ref = a_this->As<RE::TESObjectREFR>();
+				if( ref )
+				{
+					REX::INFO( "SetGraphVariableFloat {} = {}"sv, a_name.c_str(), a_value);
+				}
+				
 				return func( a_this, a_name, a_value );
 			}
 			static inline REL::Relocation<decltype(thunk)> func;
@@ -217,12 +222,12 @@ namespace Hooks
 			}
 		};
 
-		struct PlayerSetGraphVarNiPoint3Hook
+		struct SetGraphVarNiPoint3Hook
 		{
-			static bool thunk( RE::PlayerCharacter* a_this, RE::BSFixedString& a_name, RE::NiPoint3& a_value )
+			static bool thunk( RE::TESForm* a_this, RE::BSFixedString& a_name, RE::NiPoint3& a_value )
 			{
 
-				REX::INFO( "Player::SetGraphVariableNiPoint3: {} = ({},{},{})", a_name.c_str(), a_value.x, a_value.y, a_value.z);
+				REX::INFO( "SetGraphVariableNiPoint3: {} = ({},{},{})", a_name.c_str(), a_value.x, a_value.y, a_value.z);
 				return func( a_this, a_name, a_value );
 			}
 			static inline REL::Relocation<decltype(thunk)> func;

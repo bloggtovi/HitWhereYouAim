@@ -87,11 +87,11 @@ struct Settings
 	static inline bool			bEnabledPitchCorrection;
 	static inline uint32_t		iPitchCorrectionMode;
 	static inline float				fPitchOffsetDegree;
-	static inline bool				bTargetDepthPrediction;
-	static inline float					fPredictionWindowWidth;
-	static inline float					fPredictionWindowHeight;
 	static inline bool			bEnabledTargetLeading;
 	static inline float				fMaxLeadingAngle;
+	static inline bool		bTargetDepthPrediction;
+	static inline float		fPredictionWindowWidth;
+	static inline float		fPredictionWindowHeight;
 
 	// Calibration
 	static inline float		fMaximumTargetDistance;

@@ -9,6 +9,8 @@ bool Hooks::Install()
 	PlayerSetAimPitchHook::Install();
 	PlayerUpdateHook::Install();
 
+	//Test::SetGraphVarFloatHook::Install();
+
 	return true;
 }
 
@@ -86,7 +88,9 @@ void Hooks::PlayerProjectileCalculateLaunchAngleHook::CalculatePlayerProjectileL
 	if( Settings::bEnabled &&
 		(
 			// Disable if free rotation is enabled for FPS and TPS
-			(!isFreeRotation &&
+			(
+				( !isFreeRotation || thirdPersonState->freeRotation.x < 0.1f )
+				&&
 				(
 					cameraState->id == RE::CameraState::kFirstPerson ||
 					cameraState->id == RE::CameraState::kThirdPerson
@@ -127,7 +131,9 @@ void Hooks::PlayerProjectileCalculateLaunchAngleHook::CalculatePlayerProjectileL
 				RE::NiPoint3 rayDelta = camera->world.translate - aimLocation;
 				auto [potentialTarget,predictPos] = GetPotentialPlayerTarget(
 					rayDelta.Length(),
-					a_projectile,
+					a_projectile->GetSpeed(),
+					a_projectile->GetGravity(),
+					&fireOrigin,
 					Settings::fPredictionWindowWidth,
 					Settings::fPredictionWindowHeight,
 					nullptr, isFixedAngle );
@@ -441,50 +447,54 @@ float Hooks::PlayerSetAimPitchHook::PlayerGetAimPitch( RE::AIProcess* a_process,
 void Hooks::ProjectileInitHook::OverrideProjectileInit( RE::Projectile* a_this, RE::NiPoint3& a_angle )
 {
 	auto& shooter = a_this->GetProjectileRuntimeData().shooter;
-	if( Settings::bEnabled && shooter.native_handle() == 0x100000 ) // Player handle
+	if( shooter.native_handle() == 0x100000 ) // Player handle
 	{
-		// Replace with HWYA angle
-		auto player = RE::PlayerCharacter::GetSingleton();
-		auto pcCamera = RE::PlayerCamera::GetSingleton();
-		auto cameraState = pcCamera->currentState.get();
-		if( cameraState && cameraState->id == RE::CameraState::kMount )
+		if( Settings::bEnabled )
 		{
-			auto biped = player->GetCurrentBiped();
-			if( biped &&
-				player->AsActorState()->GetAttackState() >= RE::ATTACK_STATE_ENUM::kBowReleasing &&
-				player->AsActorState()->GetAttackState() <= RE::ATTACK_STATE_ENUM::kBowReleased )
+			// Replace with HWYA angle
+			auto player = RE::PlayerCharacter::GetSingleton();
+			auto pcCamera = RE::PlayerCamera::GetSingleton();
+			auto cameraState = pcCamera->currentState.get();
+			if( cameraState && cameraState->id == RE::CameraState::kMount )
 			{
-				auto process = player->GetActorRuntimeData().currentProcess;
-				auto fireNode = process->GetWeaponNode( biped );
-
-				auto firePosition = fireNode->world.translate;
-				auto fireDirection = fireNode->world.rotate * RE::NiPoint3( 0, 1, 0 );
-
-				fireDirection.Unitize();
-
-				float horizontalSquared =
-					fireDirection.x * fireDirection.x +
-					fireDirection.y * fireDirection.y;
-
-				float lengthSquared = horizontalSquared + fireDirection.z * fireDirection.z;
-
-				if( lengthSquared > 1.e-6f && horizontalSquared > 1.e-6f )
+				auto biped = player->GetCurrentBiped();
+				if( biped &&
+					player->AsActorState()->GetAttackState() >= RE::ATTACK_STATE_ENUM::kBowReleasing &&
+					player->AsActorState()->GetAttackState() <= RE::ATTACK_STATE_ENUM::kBowReleased )
 				{
-					// Only clamp yaw. Leave pitch as is.
-					//float angleX = atan2( -fireDirection.z, sqrt( horizontalSquared ) );
-					float angleZ = atan2( fireDirection.x, fireDirection.y );
+					auto process = player->GetActorRuntimeData().currentProcess;
+					auto fireNode = process->GetWeaponNode( biped );
 
-					float maxVisualDifference = Settings::fMountedYawTolerance * degToRad;
-					float yawDifference = std::remainder(a_angle.z - angleZ, 2.0f * std::numbers::pi_v<float>);
+					auto firePosition = fireNode->world.translate;
+					auto fireDirection = fireNode->world.rotate * RE::NiPoint3( 0, 1, 0 );
 
-					//a_angle.x = angleX;
-					a_angle.z = angleZ + std::clamp( yawDifference, -maxVisualDifference, maxVisualDifference );
+					fireDirection.Unitize();
+
+					float horizontalSquared =
+						fireDirection.x * fireDirection.x +
+						fireDirection.y * fireDirection.y;
+
+					float lengthSquared = horizontalSquared + fireDirection.z * fireDirection.z;
+
+					if( lengthSquared > 1.e-6f && horizontalSquared > 1.e-6f )
+					{
+						// Only clamp yaw. Leave pitch as is.
+						//float angleX = atan2( -fireDirection.z, sqrt( horizontalSquared ) );
+						float angleZ = atan2( fireDirection.x, fireDirection.y );
+
+						float maxVisualDifference = Settings::fMountedYawTolerance * degToRad;
+						float yawDifference = std::remainder(a_angle.z - angleZ, 2.0f * std::numbers::pi_v<float>);
+
+						//a_angle.x = angleX;
+						a_angle.z = angleZ + std::clamp( yawDifference, -maxVisualDifference, maxVisualDifference );
+					}
 				}
 			}
+
+			SetProjectileAngle( a_this, a_angle.x, a_angle.z );
 		}
 
-		SetProjectileAngle( a_this, a_angle.x, a_angle.z );
-
-		TrueHUDArrowTrail::BeginArrow( a_this );
+		if( !a_this->IsFlameProjectile() && !a_this->IsBeamProjectile() )
+			TrueHUDArrowTrail::BeginArrow( a_this );
 	}
 }

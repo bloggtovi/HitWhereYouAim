@@ -398,26 +398,205 @@ static ProjectedBounds ProjectReferenceBoundsToScreen( const RE::NiCamera* a_cam
 	return result;
 }
 
-static ProjectedBounds GetSweptProjectedBounds( const ProjectedBounds& a_currentBounds, const ProjectedBounds& a_predictedBounds )
+struct ProjectedSweep
 {
-	if( !a_currentBounds.valid )
-		return a_predictedBounds;
+	std::vector<RE::NiPoint2> points;
+	ProjectedBounds bounds;
+	bool valid = false;
+};
 
-	if( !a_predictedBounds.valid )
-		return a_currentBounds;
+static float Cross2D( const RE::NiPoint2& a_origin, const RE::NiPoint2& a_point1, const RE::NiPoint2& a_point2 )
+{
+	return
+		(a_point1.x - a_origin.x) * (a_point2.y - a_origin.y) -
+		(a_point1.y - a_origin.y) * (a_point2.x - a_origin.x);
+}
 
-	ProjectedBounds result;
-	result.min.x = std::min( a_currentBounds.min.x, a_predictedBounds.min.x );
-	result.min.y = std::min( a_currentBounds.min.y, a_predictedBounds.min.y );
-	result.max.x = std::max( a_currentBounds.max.x, a_predictedBounds.max.x );
-	result.max.y = std::max( a_currentBounds.max.y, a_predictedBounds.max.y );
+static ProjectedSweep GetProjectedSweep( const ProjectedBounds& a_currentBounds, const ProjectedBounds& a_predictedBounds )
+{
+	ProjectedSweep result;
+
+	if( !a_currentBounds.valid || !a_predictedBounds.valid )
+		return result;
+
+	std::vector<RE::NiPoint2> points{
+		{ a_currentBounds.min.x, a_currentBounds.min.y },
+		{ a_currentBounds.min.x, a_currentBounds.max.y },
+		{ a_currentBounds.max.x, a_currentBounds.min.y },
+		{ a_currentBounds.max.x, a_currentBounds.max.y },
+		{ a_predictedBounds.min.x, a_predictedBounds.min.y },
+		{ a_predictedBounds.min.x, a_predictedBounds.max.y },
+		{ a_predictedBounds.max.x, a_predictedBounds.min.y },
+		{ a_predictedBounds.max.x, a_predictedBounds.max.y }
+	};
+
+	std::sort(
+		points.begin(),
+		points.end(),
+		[]( const RE::NiPoint2& a_left, const RE::NiPoint2& a_right )
+		{
+			return a_left.x < a_right.x || a_left.x == a_right.x && a_left.y < a_right.y;
+		} );
+
+	points.erase(
+		std::unique(
+			points.begin(),
+			points.end(),
+			[]( const RE::NiPoint2& a_left, const RE::NiPoint2& a_right )
+			{
+				return a_left.x == a_right.x && a_left.y == a_right.y;
+			} ),
+		points.end() );
+
+	if( points.size() < 3 )
+		return result;
+
+	result.points.resize( points.size() * 2 );
+	size_t hullSize = 0;
+
+	for( const auto& point : points )
+	{
+		while( hullSize >= 2 && Cross2D( result.points[hullSize - 2], result.points[hullSize - 1], point ) <= 0 )
+			--hullSize;
+
+		result.points[hullSize++] = point;
+	}
+
+	size_t lowerHullSize = hullSize;
+	for( auto iter = points.rbegin() + 1; iter != points.rend(); ++iter )
+	{
+		while( hullSize > lowerHullSize && Cross2D( result.points[hullSize - 2], result.points[hullSize - 1], *iter ) <= 0 )
+			--hullSize;
+
+		result.points[hullSize++] = *iter;
+	}
+
+	if( hullSize > 1 )
+		--hullSize;
+
+	result.points.resize( hullSize );
+	if( result.points.size() < 3 )
+	{
+		result.points.clear();
+		return result;
+	}
+
+	result.bounds.min = result.points.front();
+	result.bounds.max = result.points.front();
+
+	for( const auto& point : result.points )
+	{
+		result.bounds.min.x = std::min( result.bounds.min.x, point.x );
+		result.bounds.min.y = std::min( result.bounds.min.y, point.y );
+		result.bounds.max.x = std::max( result.bounds.max.x, point.x );
+		result.bounds.max.y = std::max( result.bounds.max.y, point.y );
+	}
+
+	result.bounds.valid = true;
 	result.valid = true;
 	return result;
 }
 
+static constexpr float friendlyGravityAimErrorMultiplier = 1.25f;
+
+static ProjectedBounds ExtendProjectedBoundsUpwardForGravity(
+	const RE::NiCamera* a_camera,
+	const ProjectedBounds& a_bounds,
+	const RE::NiPoint3& a_fireOrigin,
+	const RE::NiPoint3& a_targetPosition,
+	float a_projectileSpeed,
+	float a_projectileGravity )
+{
+	ProjectedBounds result = a_bounds;
+
+	if( !result.valid || !a_camera || a_projectileSpeed <= 0.0f || a_projectileGravity <= 0.0f )
+		return result;
+
+	RE::NiPoint3 delta = a_targetPosition - a_fireOrigin;
+	float horizontalDistanceSquared = delta.x * delta.x + delta.y * delta.y;
+
+	if( horizontalDistanceSquared <= 0.000001f )
+		return result;
+
+	float speedSquared = a_projectileSpeed * a_projectileSpeed;
+	float discriminant =
+		speedSquared * speedSquared -
+		a_projectileGravity *
+		(a_projectileGravity * horizontalDistanceSquared + 2.0f * delta.z * speedSquared);
+
+	if( discriminant <= 0.0f )
+		return result;
+
+	float horizontalDistance = sqrt( horizontalDistanceSquared );
+	float tangent =
+		(speedSquared - sqrt( discriminant )) /
+		(a_projectileGravity * horizontalDistance);
+	RE::NiPoint3 compensatedPosition = a_targetPosition;
+	compensatedPosition.z = a_fireOrigin.z + horizontalDistance * tangent;
+
+	RE::NiBound targetPoint;
+	targetPoint.center = a_targetPosition;
+	targetPoint.radius = 0.0f;
+	RE::NiPoint3 targetMin, targetMax;
+	ProjectBoundToScreen( a_camera, targetPoint, targetMin, targetMax, 0.0f );
+
+	RE::NiBound compensatedPoint;
+	compensatedPoint.center = compensatedPosition;
+	compensatedPoint.radius = 0.0f;
+	RE::NiPoint3 compensatedMin, compensatedMax;
+	ProjectBoundToScreen( a_camera, compensatedPoint, compensatedMin, compensatedMax, 0.0f );
+
+	float upwardExtension = compensatedMin.y - targetMin.y;
+	if( upwardExtension > 0.0f )
+		result.max.y += upwardExtension * friendlyGravityAimErrorMultiplier;
+
+	return result;
+}
+
+static ProjectedBounds GetHorizontallyInsetBounds( const ProjectedBounds& a_bounds, float a_inset )
+{
+	ProjectedBounds result = a_bounds;
+
+	if( !result.valid )
+		return result;
+
+	float xInset = (result.max.x - result.min.x) * a_inset;
+	result.min.x += xInset;
+	result.max.x -= xInset;
+
+	if( result.min.x > result.max.x )
+		result.valid = false;
+
+	return result;
+}
+
+static bool IsScreenCenterInsideProjectedSweep( const ProjectedSweep& a_sweep )
+{
+	if( !a_sweep.valid || a_sweep.points.size() < 3 )
+		return false;
+
+	RE::NiPoint2 center{ 0, 0 };
+	bool hasNegative = false;
+	bool hasPositive = false;
+
+	for( size_t i = 0; i < a_sweep.points.size(); ++i )
+	{
+		float cross = Cross2D( a_sweep.points[i], a_sweep.points[(i + 1) % a_sweep.points.size()], center );
+		hasNegative |= cross < 0;
+		hasPositive |= cross > 0;
+
+		if( hasNegative && hasPositive )
+			return false;
+	}
+
+	return true;
+}
+
 static std::pair<RE::TESObjectREFR*,RE::NiPoint3> GetPotentialPlayerTarget(
 	float a_distance,
-	RE::Projectile* a_projectile = nullptr,
+	float a_projectileSpeed = 0.0f,
+	float a_projectileGravity = 0.0f,
+	const RE::NiPoint3* a_fireOrigin = nullptr,
 	float a_xLimit = 0.25f,
 	float a_yLimit = 0.25f,
 	CandidateSelectionInfo* out_debugInfo = nullptr,
@@ -442,9 +621,8 @@ static std::pair<RE::TESObjectREFR*,RE::NiPoint3> GetPotentialPlayerTarget(
 	float distanceSquared = a_distance * a_distance;
 	float bestScore = FLT_MAX;
 	float bestDistanceSquared = FLT_MAX;
-	float projectileSpeed = a_projectile ? a_projectile->GetSpeed() : 0;
 
-	RE::NiPoint3 origin = a_projectile ? a_projectile->GetPosition() : player->GetPosition();
+	RE::NiPoint3 origin = a_fireOrigin ? *a_fireOrigin : player->GetPosition();
 
 	RE::Actor* targetCandidate = nullptr;
 	RE::NiPoint3 targetMoveDelta{ 0, 0, 0 };
@@ -485,14 +663,14 @@ static std::pair<RE::TESObjectREFR*,RE::NiPoint3> GetPotentialPlayerTarget(
 			float ttr = 0;
 
 			// Predict future position before projecting onto the screen
-			if( projectileSpeed > 0 )
+			if( a_projectileSpeed > 0 )
 			{
 				RE::NiPoint3 velocity;
 				highActor->GetLinearVelocity( velocity );
 
 				// Simple two pass predictor
-				ttr = CalculateProjectileFlightTimeToTarget( origin, bound.center,					projectileSpeed );
-				ttr = CalculateProjectileFlightTimeToTarget( origin, bound.center + velocity * ttr, projectileSpeed );
+				ttr = CalculateProjectileFlightTimeToTarget( origin, bound.center,					a_projectileSpeed );
+				ttr = CalculateProjectileFlightTimeToTarget( origin, bound.center + velocity * ttr, a_projectileSpeed );
 
 				moveDelta = velocity * ttr;
 			}
@@ -501,7 +679,27 @@ static std::pair<RE::TESObjectREFR*,RE::NiPoint3> GetPotentialPlayerTarget(
 			auto projectedBounds = ttr > 0 ?
 				ProjectReferenceBoundsToScreen( camera, highActor.get(), ttr, 0 ) :
 				currentBounds;
-			auto sweptBounds = GetSweptProjectedBounds( currentBounds, projectedBounds );
+
+			auto projectedSweep = GetProjectedSweep( currentBounds, projectedBounds );
+
+			RE::NiPoint3 currentTargetPosition = bound.center;
+			currentTargetPosition.x = highActor->GetPositionX();
+			currentTargetPosition.y = highActor->GetPositionY();
+
+			RE::NiPoint3 predictedTargetPosition = currentTargetPosition + moveDelta;
+			auto friendlyCurrentBounds = GetHorizontallyInsetBounds( currentBounds, 0.1f );
+			auto friendlyProjectedBounds = GetHorizontallyInsetBounds( projectedBounds, 0.1f );
+
+			if( a_fixedPitchMode )
+			{
+				friendlyCurrentBounds = ExtendProjectedBoundsUpwardForGravity(
+					camera, friendlyCurrentBounds, origin, currentTargetPosition, a_projectileSpeed, a_projectileGravity );
+
+				friendlyProjectedBounds = ExtendProjectedBoundsUpwardForGravity(
+					camera, friendlyProjectedBounds, origin, predictedTargetPosition, a_projectileSpeed, a_projectileGravity );
+			}
+
+			auto friendlyProjectedSweep = GetProjectedSweep( friendlyCurrentBounds, friendlyProjectedBounds );
 			auto& projectedMin = projectedBounds.min;
 			auto& projectedMax = projectedBounds.max;
 
@@ -532,9 +730,9 @@ static std::pair<RE::TESObjectREFR*,RE::NiPoint3> GetPotentialPlayerTarget(
 				continue;
 
 			bool insideSelectionWindow =
-				sweptBounds.valid &&
-				sweptBounds.max.x >= -a_xLimit && sweptBounds.min.x <= a_xLimit &&
-				sweptBounds.max.y >= -yLimitDown && sweptBounds.min.y <= yLimitUp;
+				projectedSweep.valid &&
+				projectedSweep.bounds.max.x >= -a_xLimit && projectedSweep.bounds.min.x <= a_xLimit &&
+				projectedSweep.bounds.max.y >= -yLimitDown && projectedSweep.bounds.min.y <= yLimitUp;
 
 			if( debugCandidate )
 				debugCandidate->insideSelectionWindow = insideSelectionWindow;
@@ -543,24 +741,17 @@ static std::pair<RE::TESObjectREFR*,RE::NiPoint3> GetPotentialPlayerTarget(
 
 			bool passedFriendlySelection = true;
 			if( !isHostile )
-			{
-				float xDepth = (projectedMax.x - projectedMin.x) * 0.1f;
-
-				passedFriendlySelection =
-					projectedMin.x + xDepth <= 0 && projectedMax.x - xDepth >= 0;
-			}
+				passedFriendlySelection = IsScreenCenterInsideProjectedSweep( friendlyProjectedSweep );
 
 			if( debugCandidate )
 				debugCandidate->passedFriendlySelection = passedFriendlySelection;
 			else if( !passedFriendlySelection )
 				continue;
 
-			bool containsCrosshair =
-				projectedMin.x <= 0 && projectedMax.x >= 0 &&
-				projectedMin.y <= 0 && projectedMax.y >= 0;
+			bool containsCrosshair = IsScreenCenterInsideProjectedSweep( projectedSweep );
 
 			if( !isHostile )
-				containsCrosshair = passedFriendlySelection;
+				containsCrosshair = IsScreenCenterInsideProjectedSweep( friendlyProjectedSweep );
 
 			if( !debugCandidate )
 			{
