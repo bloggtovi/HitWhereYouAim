@@ -1,3 +1,29 @@
+/*
+* Hit Where You Aim
+* Ballistic trajectory solver
+*
+* This file is based on the ballistic trajectory solver by Forrest Smith:
+* https://github.com/forrestthewoods/lib_fts/blob/master/code/fts_ballistic_trajectory.cs
+*
+* The original solver is dual-licensed to the public domain and under the
+* following license:
+*
+*     You are granted a perpetual, irrevocable license to copy, modify,
+*     publish, and distribute this file as you see fit.
+*
+* The quadratic, cubic, and quartic root-solving functions are based on
+* Roots3And4.c by Jochen Schwarze from Graphics Gems I:
+* https://github.com/erich666/GraphicsGems/blob/master/gems/Roots3And4.c
+*
+* Rewritten into generic C++ and modified for Hit Where You Aim.
+*
+* HWYA modifications are licensed under GPL-3.0-or-later with the
+* Modding Exception and GPL-3.0 Linking Exception
+* (with Corresponding Source).
+*
+* See COPYING and EXCEPTIONS for the complete license terms.
+*/
+
 #pragma once
 
 #include <algorithm>
