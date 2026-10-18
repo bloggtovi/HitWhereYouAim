@@ -1,17 +1,6 @@
-# Generic Skyrim SKSE Plugin Template
+# Hit Where You Aim
 
-A minimal CMake/vcpkg starter for a native SKSE plugin using CommonLibSSE-NG.
-
-## Create a new mod
-
-1. Rename the repository folder.
-2. Configure these cache values in `CMakeUserPresets.json`, on the command line, or in your IDE:
-   - `PLUGIN_NAME`
-   - `PLUGIN_VERSION`
-   - `PLUGIN_AUTHOR`
-   - `PLUGIN_DESCRIPTION`
-3. Replace the sample code in `src/main.cpp`.
-4. Rename and expand `config/plugin.ini` if configuration is needed.
+Makes arrows, bolts and spells go toward the point under the crosshair.
 
 ## Prerequisites
 
@@ -20,6 +9,7 @@ A minimal CMake/vcpkg starter for a native SKSE plugin using CommonLibSSE-NG.
 - CMake 3.21 or newer
 - vcpkg in `VCPKG_ROOT`
 - Git
+- CommonLibSSE-NG
 
 ## Initialize
 
@@ -31,19 +21,22 @@ $env:VCPKG_ROOT = "D:/Tools/vcpkg"
 ## Build
 
 ```powershell
-For all versions
-cmake --preset vs2022-all -DPLUGIN_NAME=ExamplePlugin -DPLUGIN_VERSION=0.1.0
-Exclude VR
-cmake --preset vs2022-se-ae -DPLUGIN_NAME=ExamplePlugin -DPLUGIN_VERSION=0.1.0
+cmake --preset vs2022-se-ae
 cmake --build --preset release
 ```
 
 ## Optional deployment
 
-Set a semicolon-separated list of `SKSE/Plugins` directories, then enable `COPY_BUILD`:
+Set `SkyrimPluginTargets` to a semicolon-separated list of `SKSE/Plugins` directories, then enable `COPY_BUILD`:
 
 ```powershell
 $env:SkyrimPluginTargets = "D:/Games/Skyrim Special Edition/Data/SKSE/Plugins;D:/Games/Skyrim VR/Data/SKSE/Plugins"
 cmake --preset windows-vcpkg -DCOPY_BUILD=ON
 cmake --build --preset release
 ```
+
+## License
+
+Hit Where You Aim is licensed under GPL-3.0-or-later with the Modding Exception and GPL-3.0 Linking Exception (with Corresponding Source).
+
+See `COPYING` and `EXCEPTIONS` for the complete terms. Third-party components retain their original licenses and copyright notices.
