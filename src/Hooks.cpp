@@ -314,7 +314,10 @@ float Hooks::PlayerSetAimPitchHook::PlayerGetAimPitch( RE::AIProcess* a_process,
 			ResetCrosshairPosition();
 	}
 
-	// Try to make the aiming pose align with the target
+	// Try to make the aiming pose align with the target. Skip this for VATS
+	auto playerCamera = RE::PlayerCamera::GetSingleton();
+	auto currentCameraState = playerCamera->currentState ? playerCamera->currentState.get() : nullptr;
+	bool isVATSPlaying = currentCameraState && currentCameraState->id == RE::CameraState::kVATS;
 	if( Settings::bEnabled && a_process == player->GetActorRuntimeData().currentProcess )
 	{
 		// Initialize
@@ -323,7 +326,8 @@ float Hooks::PlayerSetAimPitchHook::PlayerGetAimPitch( RE::AIProcess* a_process,
 
 		if( player->AsActorState()->IsWeaponDrawn() &&
 			player->AsActorState()->GetAttackState() >= RE::ATTACK_STATE_ENUM::kBowDraw &&
-			player->AsActorState()->GetAttackState() <= RE::ATTACK_STATE_ENUM::kBowFollowThrough )
+			player->AsActorState()->GetAttackState() <= RE::ATTACK_STATE_ENUM::kBowFollowThrough &&
+			!isVATSPlaying )
 		{
 			//auto camera				= RE::Main::WorldRootCamera();
 			auto screenSize			= RE::BSGraphics::Renderer::GetSingleton()->GetScreenSize();
