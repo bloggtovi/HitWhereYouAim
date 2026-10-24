@@ -82,6 +82,12 @@ struct Settings
 
 	static void Load();
 
+	// Compound conditions
+	static inline bool IsFixedAngleEnabled()			{ return bEnabledPitchCorrection && iPitchCorrectionMode == (uint32_t)PitchCorrectionMode::kFixedAngle; }
+	static inline bool IsAutomaticPitchEnabled()		{ return bEnabledPitchCorrection && iPitchCorrectionMode == (uint32_t)PitchCorrectionMode::kAutomatic; }
+	static inline bool IsTargetLeadingEnabled()			{ return IsAutomaticPitchEnabled() && bEnabledTargetLeading; }
+	static inline bool IsCrosshairImpactDebugEnabled()	{ return bEnabled && bShowCrosshairRayImpact; }
+
 	// Main functions
 	static inline bool		bEnabled;
 	static inline bool			bEnabledPitchCorrection;
@@ -92,6 +98,7 @@ struct Settings
 	static inline bool		bTargetDepthPrediction;
 	static inline float		fPredictionWindowWidth;
 	static inline float		fPredictionWindowHeight;
+	static inline bool		bInheritVelocity;
 
 	// Calibration
 	static inline float		fMaximumTargetDistance;

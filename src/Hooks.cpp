@@ -101,11 +101,6 @@ void Hooks::PlayerProjectileCalculateLaunchAngleHook::CalculatePlayerProjectileL
 			)
 		)
 	{
-		bool isFixedAngle		= Settings::bEnabledPitchCorrection &&
-			(PitchCorrectionMode)Settings::iPitchCorrectionMode == PitchCorrectionMode::kFixedAngle;
-		bool isAutoPitch		= Settings::bEnabledPitchCorrection &&
-			(PitchCorrectionMode)Settings::iPitchCorrectionMode == PitchCorrectionMode::kAutomatic;
-
 		auto camera				= RE::Main::WorldRootCamera();
 		float aimZeroDistance	= Settings::fMaximumTargetDistance * meterToGameUnit;
 		RE::NiPoint3 fireOrigin = a_origin ? *a_origin : a_launchNode->world.translate;
@@ -136,7 +131,7 @@ void Hooks::PlayerProjectileCalculateLaunchAngleHook::CalculatePlayerProjectileL
 					&fireOrigin,
 					Settings::fPredictionWindowWidth,
 					Settings::fPredictionWindowHeight,
-					nullptr, isFixedAngle );
+					nullptr, Settings::IsFixedAngleEnabled() );
 
 				if( potentialTarget )
 				{
@@ -170,7 +165,7 @@ void Hooks::PlayerProjectileCalculateLaunchAngleHook::CalculatePlayerProjectileL
 			float originalPitch = *out_pitch;
 			float originalYaw = *out_yaw;
 			// Use ballistic solver to solve the aim pitch
-			if( isAutoPitch )
+			if( Settings::IsAutomaticPitchEnabled() )
 			{
 				// Zero out the velocity prediction if not needed
 				if( !Settings::bEnabledTargetLeading )
@@ -204,16 +199,14 @@ void Hooks::PlayerProjectileCalculateLaunchAngleHook::CalculatePlayerProjectileL
 				CalculateProjectileAngles( fireOrigin, aimLocation,	*out_pitch, *out_yaw );
 
 				// Pitch offset for projectile with gravity in fixed angle mode
-				if( isFixedAngle && a_projectile->GetGravity() > 0.0f )
+				if( Settings::IsFixedAngleEnabled() && a_projectile->GetGravity() > 0.0f )
 				{
 					*out_pitch -= Settings::fPitchOffsetDegree * degToRad;
 				}
 			}
 
 			// Ignore angle correction greater than limit when using target leading mode
-			if( Settings::bEnabledPitchCorrection &&
-				Settings::iPitchCorrectionMode == (uint32_t)PitchCorrectionMode::kAutomatic &&
-				Settings::bEnabledTargetLeading )
+			if( Settings::IsTargetLeadingEnabled() )
 			{
 
 				float angleDeltaLimit = Settings::fMaxLeadingAngle * degToRad;
@@ -305,7 +298,7 @@ float Hooks::PlayerSetAimPitchHook::PlayerGetAimPitch( RE::AIProcess* a_process,
 	float result = a_pitch;
 
 	RE::PlayerCharacter* player = RE::PlayerCharacter::GetSingleton();
-	if( Settings::bEnabled && Settings::bShowCrosshairRayImpact )
+	if( Settings::IsCrosshairImpactDebugEnabled() )
 	{
 		auto currentTimeMS = RE::BSTimer::GetSingleton()->smoothedRunTimeMS;
 		if( rayImpactExpire > currentTimeMS && lastRayCoord != RE::NiPoint3::Zero() )
@@ -362,8 +355,7 @@ float Hooks::PlayerSetAimPitchHook::PlayerGetAimPitch( RE::AIProcess* a_process,
 
 			// 3rd person model firing angle adjustment
 			bool isAngleCalculated = false;
-			if( Settings::bEnabledPitchCorrection &&
-				Settings::iPitchCorrectionMode == (uint32_t)PitchCorrectionMode::kAutomatic )
+			if( Settings::IsAutomaticPitchEnabled() )
 			{
 				auto projectile			= player->GetCurrentAmmo()->GetRuntimeData().data.projectile;
 				auto projectileSpeed	= projectile ? projectile->data.speed : 0;
@@ -380,8 +372,7 @@ float Hooks::PlayerSetAimPitchHook::PlayerGetAimPitch( RE::AIProcess* a_process,
 			}
 
 			// Fixed pitch adjustment
-			if( Settings::bEnabledPitchCorrection &&
-				Settings::iPitchCorrectionMode == (uint32_t)PitchCorrectionMode::kFixedAngle )
+			if( Settings::IsFixedAngleEnabled() )
 			{
 				lookPitch -= Settings::fPitchOffsetDegree * degToRad;
 			}
@@ -496,6 +487,17 @@ void Hooks::ProjectileInitHook::OverrideProjectileInit( RE::Projectile* a_this, 
 			}
 
 			SetProjectileAngle( a_this, a_angle.x, a_angle.z );
+			if( Settings::bInheritVelocity && !Settings::IsTargetLeadingEnabled() )
+			{
+				RE::NiPoint3 playerVelocity{ 0, 0, 0 };
+				player->GetLinearVelocity( playerVelocity );
+
+				auto& projectileRuntimeData = a_this->GetProjectileRuntimeData();
+				projectileRuntimeData.linearVelocity.x += playerVelocity.x;
+				projectileRuntimeData.linearVelocity.y += playerVelocity.y;
+				// Skyrim default behavior leaves z-velocity out.
+				// projectileRuntimeData.linearVelocity.z += playerVelocity.z;
+			}
 		}
 
 		if( !a_this->IsFlameProjectile() && !a_this->IsBeamProjectile() )

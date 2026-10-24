@@ -62,9 +62,6 @@ public:
 		float projectileGravity;
 		GetPlayerProjectileData( player, projectileSpeed, projectileGravity );
 		RE::NiPoint3 fireOrigin = player ? player->GetPosition() : RE::NiPoint3::Zero();
-		bool fixedPitchMode =
-			Settings::bEnabledPitchCorrection &&
-			Settings::iPitchCorrectionMode == (uint32_t)PitchCorrectionMode::kFixedAngle;
 
 		GetPotentialPlayerTarget(
 			Settings::fMaximumTargetDistance * ( 1.0f / 0.0142875f ),
@@ -74,7 +71,7 @@ public:
 			Settings::fPredictionWindowWidth,
 			Settings::fPredictionWindowHeight,
 			&debugInfo,
-			fixedPitchMode );
+			Settings::IsFixedAngleEnabled() );
 
 		const auto& a_debugInfo = debugInfo;
 
@@ -130,7 +127,7 @@ public:
 			auto friendlyCurrentBounds = GetHorizontallyInsetBounds( currentBounds, friendlyInset );
 			auto friendlyProjectedBounds = GetHorizontallyInsetBounds( projectedBounds, friendlyInset );
 
-			if( fixedPitchMode )
+			if( Settings::IsFixedAngleEnabled() )
 			{
 				friendlyCurrentBounds = ExtendProjectedBoundsUpwardForGravity(
 					camera, friendlyCurrentBounds, fireOrigin, currentTargetPosition, projectileSpeed, projectileGravity );

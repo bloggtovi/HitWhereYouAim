@@ -19,6 +19,7 @@ void Settings::Load()
 	settings->RegisterBinding( { &fPredictionWindowHeight,	Settings::BindingType::kFloat,		"Main", "fPredictionWindowHeight",	0.5f } );
 	settings->RegisterBinding( { &bEnabledTargetLeading,	Settings::BindingType::kBoolean,	"Main", "bEnabledTargetLeading",	true } );
 	settings->RegisterBinding( { &fMaxLeadingAngle,			Settings::BindingType::kFloat,		"Main", "fMaxLeadingAngle",			45.0f } );
+	settings->RegisterBinding( { &bInheritVelocity,			Settings::BindingType::kBoolean,	"Main", "bInheritVelocity",			false } );
 
 	settings->RegisterBinding( { &fMaximumTargetDistance,	Settings::BindingType::kFloat,		"Calibration", "fMaximumTargetDistance",	100.0f } );
 	settings->RegisterBinding( { &fArcheryPitchCalibration,	Settings::BindingType::kFloat,		"Calibration", "fArcheryPitchCalibration",	0.02f } );
