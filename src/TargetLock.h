@@ -5,6 +5,7 @@
 #include <bit>
 #include <cmath>
 #include <numbers>
+#include <optional>
 
 enum class TargetLockMode
 {
@@ -50,19 +51,40 @@ public:
 		if( !Settings::bTargetLockEnabled )
 			return;
 
-		bool held = IsKeyHeld();
+		auto heldState = IsKeyHeld();
 		if( IsInMenu() )
 		{
 			// Clicks inside menus are not aim input
 			if( IsHoldMode() )
 				Unlock();
-			keyWasHeld = held;
+			if( heldState )
+				keyWasHeld = *heldState;
 			return;
 		}
 
-		if( held && !keyWasHeld )
+		if( !heldState )
+			return;
+
+		// The event path normally handles both edges first. Polling only fills in edges that never
+		// arrived as events, and requires two consistent frames so a one-frame lag in the raw
+		// buffer can never fake a press right after a release or a release in the middle of a hold.
+		if( *heldState )
+		{
+			++polledHeldFrames;
+			polledReleasedFrames = 0;
+		}
+		else
+		{
+			++polledReleasedFrames;
+			polledHeldFrames = 0;
+		}
+
+		if( polledHeldFrames >= 2 )
+			polledSawHeld = true;
+
+		if( !keyWasHeld && polledHeldFrames == 2 )
 			OnKeyPressed();
-		else if( !held && keyWasHeld )
+		else if( keyWasHeld && polledSawHeld && polledReleasedFrames == 2 )
 			OnKeyReleased();
 	}
 
@@ -98,6 +120,7 @@ public:
 	static void OnKeyReleased()
 	{
 		keyWasHeld = false;
+		polledSawHeld = false;
 
 		// Bows and crossbows fire on release, a few frames after the button goes up. Keep tracking
 		// briefly so that shot still goes at the target.
@@ -239,20 +262,27 @@ public:
 		if( !a_instant && Settings::fTargetLockRotationSpeed > 0.0f )
 			blend = 1.0f - std::exp( -Settings::fTargetLockRotationSpeed * a_delta );
 
+		// The third person camera looks along player angle + freeRotation on both axes (the same
+		// relation True Directional Movement uses to read the camera rotation). First person has no
+		// offset. Correcting the error of the full camera angle keeps the crosshair exact even when
+		// freeRotation is not zero.
 		auto thirdPersonState = isThirdPerson ? skyrim_cast<RE::ThirdPersonState*>( cameraState ) : nullptr;
+		float yawOffset = thirdPersonState ? thirdPersonState->freeRotation.x : 0.0f;
+		float pitchOffset = thirdPersonState ? thirdPersonState->freeRotation.y : 0.0f;
+		float yawError = WrapAngle( desiredYaw - ( player->data.angle.z + yawOffset ) );
+		float pitchError = desiredPitch - ( player->data.angle.x + pitchOffset );
+
 		if( thirdPersonState && thirdPersonState->GetFreeRotationMode() )
 		{
-			// The orbiting camera looks along player yaw + freeRotation.x, so steer the offset and
-			// leave the character's heading to the movement controls.
-			float cameraYaw = player->data.angle.z + thirdPersonState->freeRotation.x;
-			thirdPersonState->freeRotation.x += WrapAngle( desiredYaw - cameraYaw ) * blend;
+			// Orbiting camera: steer the offset and leave the character's heading to the movement controls
+			thirdPersonState->freeRotation.x += yawError * blend;
 		}
 		else
 		{
-			player->data.angle.z = NormalizeYaw( player->data.angle.z + WrapAngle( desiredYaw - player->data.angle.z ) * blend );
+			player->data.angle.z = NormalizeYaw( player->data.angle.z + yawError * blend );
 		}
 
-		player->data.angle.x += ( desiredPitch - player->data.angle.x ) * blend;
+		player->data.angle.x = std::clamp( player->data.angle.x + pitchError * blend, -maxPitch, maxPitch );
 	}
 
 private:
@@ -316,51 +346,65 @@ private:
 		}
 	};
 
-	// Any open menu that pauses the game or shows the mouse cursor. Checking the cursor flag also
-	// covers mods such as SkyrimSouls RE that keep menus from pausing the game.
+	// True whenever the click is not gameplay input. The engine's own input context stack is the
+	// primary signal: every interactive menu pushes a context, even when a mod such as SkyrimSouls RE
+	// keeps it from pausing the game. Cursor menus that are not always-open cover overlays that do
+	// not push one, and disabled fighting controls cover scripted scenes.
 	static bool IsInMenu()
 	{
 		auto ui = RE::UI::GetSingleton();
-		if( !ui )
+		if( !ui || ui->GameIsPaused() )
 			return true;
 
-		if( ui->GameIsPaused() )
-			return true;
+		if( auto controlMap = RE::ControlMap::GetSingleton() )
+		{
+			const auto& data = controlMap->GetRuntimeData();
+			if( !data.contextPriorityStack.empty() &&
+				data.contextPriorityStack.back() != RE::UserEvents::INPUT_CONTEXT_ID::kGameplay )
+				return true;
+
+			if( !controlMap->IsFightingControlsEnabled() )
+				return true;
+		}
 
 		for( const auto& menu : ui->menuStack )
 		{
-			if( menu && ( menu->PausesGame() || menu->UsesCursor() ) )
+			if( menu && !menu->AlwaysOpen() && ( menu->PausesGame() || menu->UsesCursor() ) )
 				return true;
 		}
 
 		return false;
 	}
 
-	static bool IsKeyHeld()
+	// Physical key state for keyboard and mouse, read from the raw DirectInput buffers the engine
+	// polls. BSInputDevice::IsPressed() tests heldDownSecs, which is still 0 on the press frame,
+	// so it is avoided for the mouse. Gamepad presses come from input events only.
+	static std::optional<bool> IsKeyHeld()
 	{
 		auto inputManager = RE::BSInputDeviceManager::GetSingleton();
 		if( !inputManager )
-			return false;
+			return std::nullopt;
 
 		uint32_t key = Settings::iTargetLockKey;
-		if( key >= 280 && key <= 281 )
-		{
-			auto gamepad = inputManager->GetGamepad();
-			return gamepad && gamepad->IsPressed( key == 280 ? 0x9 : 0xA );
-		}
 		if( key >= 266 )
-		{
-			auto gamepad = inputManager->GetGamepad();
-			return gamepad && key - 266 < 16 && gamepad->IsPressed( 1u << ( key - 266 ) );
-		}
+			return std::nullopt;
+
 		if( key >= 256 )
 		{
 			auto mouse = inputManager->GetMouse();
-			return mouse && mouse->IsPressed( key - 256 );
+			if( !mouse || key - 256 >= 8 )
+				return std::nullopt;
+
+			return ( mouse->GetRuntimeData().dInputNextState.rgbButtons[key - 256] & 0x80 ) != 0;
 		}
 
+		// Read curState directly like BSWin32KeyboardDevice::IsPressed() does. Calling that function
+		// would link CommonLib's keyboard device object, whose virtuals only exist inside the game.
 		auto keyboard = inputManager->GetKeyboard();
-		return keyboard && keyboard->IsPressed( key );
+		if( !keyboard || key >= 0x100 )
+			return std::nullopt;
+
+		return ( keyboard->GetRuntimeData().curState[key] & 0x80 ) != 0;
 	}
 
 	// Standing, active combatants only. Dead, bleeding out, knocked down or getting up actors are
@@ -521,4 +565,7 @@ private:
 	static inline bool hasTrueHUDControl = false;
 	static inline bool keyWasHeld = false;
 	static inline float releaseTimer = 0.0f;
+	static inline uint32_t polledHeldFrames = 0;
+	static inline uint32_t polledReleasedFrames = 0;
+	static inline bool polledSawHeld = false;
 };
