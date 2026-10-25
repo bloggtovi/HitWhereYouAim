@@ -158,10 +158,16 @@ void Hooks::PlayerProjectileCalculateLaunchAngleHook::CalculatePlayerProjectileL
 				}
 			}
 
-			aimLocation = ClampVectorFromOrigin( RE::Main::WorldRootCamera()->world.translate, aimLocation, aimZeroDistance );
+			// A locked target's torso is already the exact aim point: no distance clamp (it may be
+			// farther than fMaximumTargetDistance) and no ray penetration (it would push the point
+			// behind the spine along the camera ray)
+			if( !isTargetLocked )
+			{
+				aimLocation = ClampVectorFromOrigin( RE::Main::WorldRootCamera()->world.translate, aimLocation, aimZeroDistance );
 
-			// Add ray penetration
-			aimLocation = ExtendVectorFromOrigin( camera->world.translate, aimLocation, Settings::fRayPenetrationDepth * meterToGameUnit );
+				// Add ray penetration
+				aimLocation = ExtendVectorFromOrigin( camera->world.translate, aimLocation, Settings::fRayPenetrationDepth * meterToGameUnit );
+			}
 
 			RE::NiPoint3 targetVelocity{ 0, 0, 0 };
 
@@ -386,8 +392,13 @@ float Hooks::PlayerSetAimPitchHook::PlayerGetAimPitch( RE::AIProcess* a_process,
 			if( Settings::bEnabledPitchCorrection )
 				aimPos.z += player->GetInfoRuntimeData().eyeHeight;
 
-			// Add penetration
-			lookTarget = ExtendVectorFromOrigin( aimPos, lookTarget, Settings::fRayPenetrationDepth * meterToGameUnit );
+			// With a target lock the pose aims at the locked torso itself
+			RE::NiPoint3 lockedAimPoint;
+			bool isTargetLocked = TargetLock::GetLockedTarget( lockedAimPoint ) != nullptr;
+			if( isTargetLocked )
+				lookTarget = lockedAimPoint;
+			else // Add penetration
+				lookTarget = ExtendVectorFromOrigin( aimPos, lookTarget, Settings::fRayPenetrationDepth * meterToGameUnit );
 
 			// Add z-bias
 			lookTarget.z += Settings::fHeightBias;
@@ -438,7 +449,9 @@ float Hooks::PlayerSetAimPitchHook::PlayerGetAimPitch( RE::AIProcess* a_process,
 			float delta = result - currentPitch;
 			float distance = abs( delta );
 
-			if( distance < 0.00001f )
+			// A target lock snaps the camera, so the bow pose snaps with it. Easing here would leave
+			// the arms, and with them the arrow's launch point, trailing behind the crosshair.
+			if( distance < 0.00001f || isTargetLocked )
 			{
 				currentPitch = result;
 				pitchVelocity = 0.0f;
@@ -531,7 +544,42 @@ void Hooks::ProjectileInitHook::OverrideProjectileInit( RE::Projectile* a_this, 
 			}
 
 			SetProjectileAngle( a_this, a_angle.x, a_angle.z );
-			if( Settings::bInheritVelocity && !Settings::IsTargetLeadingEnabled() )
+
+			// Final solve for a locked target. The launch angle hook runs before the projectile is
+			// initialized, so it can only estimate the speed (bow draw power, weapon and perk
+			// multipliers) and the spawn point. Here both are exact: the engine has set the initial
+			// velocity and position, so the intercept is solved with the real values.
+			bool solvedForLock = false;
+			RE::NiPoint3 lockedAimPoint;
+			auto lockedTarget = TargetLock::GetLockedTarget( lockedAimPoint );
+			if( lockedTarget && !a_this->IsFlameProjectile() && !a_this->IsBeamProjectile() )
+			{
+				auto& projectileRuntimeData = a_this->GetProjectileRuntimeData();
+				float speed = projectileRuntimeData.linearVelocity.Length();
+				float gravity = a_this->GetGravity() * GetWorldGravity();
+
+				RE::NiPoint3 targetVelocity{ 0, 0, 0 };
+				lockedTarget->GetLinearVelocity( targetVelocity );
+
+				float pitch = 0.0f;
+				float yaw = 0.0f;
+				if( speed > 1.0f &&
+					SolveBallisticIntercept( a_this->GetPosition(), lockedAimPoint, &targetVelocity, speed, gravity, nullptr, &pitch, &yaw ) )
+				{
+					solvedForLock = SetProjectileAngle( a_this, pitch, yaw );
+				}
+
+				ProjectileDiagnostics::Begin( a_this, lockedTarget, lockedAimPoint, targetVelocity, speed, gravity, solvedForLock );
+			}
+			else if( !a_this->IsFlameProjectile() && !a_this->IsBeamProjectile() )
+			{
+				auto& projectileRuntimeData = a_this->GetProjectileRuntimeData();
+				ProjectileDiagnostics::Begin( a_this, nullptr, RE::NiPoint3::Zero(), RE::NiPoint3::Zero(),
+					projectileRuntimeData.linearVelocity.Length(), a_this->GetGravity() * GetWorldGravity(), false );
+			}
+
+			// Inheriting the player's velocity would offset a shot solved for a locked target
+			if( Settings::bInheritVelocity && !Settings::IsTargetLeadingEnabled() && !solvedForLock )
 			{
 				RE::NiPoint3 playerVelocity{ 0, 0, 0 };
 				player->GetLinearVelocity( playerVelocity );

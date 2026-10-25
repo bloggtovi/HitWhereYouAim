@@ -230,7 +230,8 @@ public:
 			return;
 		}
 
-		if( HasLineOfSight( player, targetActor.get() ) )
+		auto aimPoint = GetAimPoint( targetActor.get() );
+		if( IsVisible( player, camera, targetActor.get(), aimPoint ) )
 		{
 			timeOutOfSight = 0.0f;
 		}
@@ -252,7 +253,7 @@ public:
 
 		float desiredPitch = 0.0f;
 		float desiredYaw = player->data.angle.z;
-		if( !CalculateProjectileAngles( camera->world.translate, GetAimPoint( targetActor.get() ), desiredPitch, desiredYaw ) )
+		if( !CalculateProjectileAngles( camera->world.translate, aimPoint, desiredPitch, desiredYaw ) )
 			return;
 
 		desiredPitch = std::clamp( desiredPitch, -maxPitch, maxPitch );
@@ -475,19 +476,19 @@ private:
 		RE::Actor* best = nullptr;
 		float bestScore = FLT_MAX;
 
-		for( auto& handle : processLists->highActorHandles )
-		{
-			auto actorPtr = handle.get();
+		auto consider = [&]( RE::ActorHandle& a_handle ) {
+			auto actorPtr = a_handle.get();
 			auto actor = actorPtr.get();
 			if( !IsValidTarget( actor ) || IsFollower( actor, player ) )
-				continue;
+				return;
 
 			if( actor->GetPosition().GetSquaredDistance( player->GetPosition() ) > maxDistance * maxDistance )
-				continue;
+				return;
 
+			auto aimPoint = GetAimPoint( actor );
 			float x, y;
-			if( !ProjectToScreen( camera, GetAimPoint( actor ), x, y ) )
-				continue;
+			if( !ProjectToScreen( camera, aimPoint, x, y ) )
+				return;
 
 			float dx = x - crosshairX;
 			float dy = y - crosshairY;
@@ -495,27 +496,52 @@ private:
 			if( actor->IsHostileToActor( player ) )
 			{
 				if( std::abs( dx ) > windowX || std::abs( dy ) > windowY )
-					continue;
+					return;
 			}
 			else if( !IsCrosshairOnActor( camera, actor, crosshairX, crosshairY ) )
 			{
-				continue;
+				return;
 			}
 
 			// Distance as seen on screen, so horizontal and vertical offsets weigh the same
 			float score = dx * dx * aspect * aspect + dy * dy;
 			if( score >= bestScore )
-				continue;
+				return;
 
-			// Line of sight is the expensive test, so run it only for a would-be winner
-			if( !HasLineOfSight( player, actor ) )
-				continue;
+			// Visibility is the expensive test, so run it only for a would-be winner
+			if( !IsVisible( player, camera, actor, aimPoint ) )
+				return;
 
 			best = actor;
 			bestScore = score;
-		}
+		};
+
+		// High process actors are the ones near the player. Distant actors that are still loaded and
+		// rendered live in the middle-high list, so both are searched to lock onto far adversaries.
+		for( auto& handle : processLists->highActorHandles )
+			consider( handle );
+		for( auto& handle : processLists->middleHighActorHandles )
+			consider( handle );
 
 		return best;
+	}
+
+	// A physical ray from the camera to the target's torso, on the engine's line-of-sight layer. It has
+	// no distance cap, unlike the GetLineOfSight condition, which is kept as a fallback.
+	static bool IsVisible( RE::PlayerCharacter* a_player, RE::NiCamera* a_camera, RE::Actor* a_actor, const RE::NiPoint3& a_aimPoint )
+	{
+		RE::CFilter filter;
+		a_player->GetCollisionFilterInfo( filter );
+
+		RE::NiPoint3 from = a_camera->world.translate;
+		RE::NiPoint3 to = a_aimPoint;
+		RE::bhkPickData pickData;
+		auto hitRef = GetRaycastTarget( from, to, filter.GetSystemGroup(), RE::COL_LAYER::kLOS, nullptr, &pickData );
+
+		if( hitRef == a_actor || !pickData.rayOutput.HasHit() )
+			return true;
+
+		return HasLineOfSight( a_player, a_actor );
 	}
 
 	static bool IsCrosshairOnActor( RE::NiCamera* a_camera, RE::Actor* a_actor, float a_crosshairX, float a_crosshairY )

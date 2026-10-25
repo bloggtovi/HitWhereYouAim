@@ -30,7 +30,7 @@ void Settings::Load()
 	settings->RegisterBinding( { &bTargetLockEnabled,		Settings::BindingType::kBoolean,	"TargetLock", "bTargetLockEnabled",			true } );
 	settings->RegisterBinding( { &iTargetLockKey,			Settings::BindingType::kInteger,	"TargetLock", "iTargetLockKey",				256 } );	// Left mouse button
 	settings->RegisterBinding( { &iTargetLockMode,			Settings::BindingType::kInteger,	"TargetLock", "iTargetLockMode",			1 } );		// Hold
-	settings->RegisterBinding( { &fTargetLockMaxDistance,	Settings::BindingType::kFloat,		"TargetLock", "fTargetLockMaxDistance",		60.0f } );
+	settings->RegisterBinding( { &fTargetLockMaxDistance,	Settings::BindingType::kFloat,		"TargetLock", "fTargetLockMaxDistance",		150.0f } );
 	settings->RegisterBinding( { &fTargetLockWindowWidth,	Settings::BindingType::kFloat,		"TargetLock", "fTargetLockWindowWidth",		0.6f } );
 	settings->RegisterBinding( { &fTargetLockWindowHeight,	Settings::BindingType::kFloat,		"TargetLock", "fTargetLockWindowHeight",	0.6f } );
 	settings->RegisterBinding( { &fTargetLockRotationSpeed,	Settings::BindingType::kFloat,		"TargetLock", "fTargetLockRotationSpeed",	0.0f } );	// Instant
@@ -43,6 +43,8 @@ void Settings::Load()
 	settings->RegisterBinding( { &bShowCrosshairRayImpact,	Settings::BindingType::kBoolean,	"Debug", "bShowCrosshairRayImpact",		false } );
 	settings->RegisterBinding( { &bShowLastProjectilePath,	Settings::BindingType::kBoolean,	"Debug", "bShowLastProjectilePath",		false } );
 	settings->RegisterBinding( { &bEnabledTargetPrediction,	Settings::BindingType::kBoolean,	"Debug", "bEnabledTargetPrediction",	false } );
+	// On while aiming is being calibrated in game: logs one short summary per arrow
+	settings->RegisterBinding( { &bProjectileDiagnostics,	Settings::BindingType::kBoolean,	"Debug", "bProjectileDiagnostics",		true } );
 	settings->ApplyDefaults();
 
 	// A missing default INI used to abort the game on startup. Fall back to the built-in

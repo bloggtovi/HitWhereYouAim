@@ -1,5 +1,13 @@
 # Cambios sobre el original (tossaponk/HitWhereYouAim @ master, v1.1)
 
+## Nuevo en 1.3.0: precisión del impacto
+- **Recálculo final con valores reales:** el disparo a un objetivo fijado se recalcula en `ProjectileInitHook`, cuando el motor ya fijó la velocidad inicial (que incluye la potencia del tensado y los multiplicadores de arma y perks) y el punto de salida reales. Antes solo se estimaban: con un 5 % de error en la velocidad, a 100 m la flecha cae casi un metro por debajo.
+- Al objetivo fijado ya no se le aplican la penetración de 20 cm ni el límite de 100 m del modo normal.
+- **Objetivos lejanos:** el selector busca también en la lista de actores lejanos (`middleHighActorHandles`) y su alcance pasa de 60 a 150 m.
+- **Visibilidad:** un rayo físico desde la cámara en la capa de línea de visión del motor, sin límite de distancia. La condición `GetLineOfSight` queda como respaldo.
+- **Pose del arco instantánea** con objetivo fijado: el brazo apunta al torso sin suavizado, y el punto de salida de la flecha ya no queda atrás.
+- **Diagnóstico de vuelo** (`bProjectileDiagnostics`, activado durante la calibración): por cada flecha, `HitWhereYouAim.log` registra la velocidad y la gravedad reales, ajustadas por mínimos cuadrados sobre la trayectoria, la distancia mínima al torso del objetivo y qué impactó.
+
 ## Nuevo en 1.2.0: bloqueo de objetivo (`src/TargetLock.h`)
 - Al pulsar el **clic izquierdo** la mira salta **al instante** sobre el adversario más cercano a ella, en el mismo fotograma del clic, así que sirve con clic rápido o sostenido. Mientras se mantiene, la mira sigue al objetivo aunque se mueva el jugador o el objetivo. Al soltar, se libera. El clic sigue atacando con normalidad, porque el evento no se consume.
 - Configurable: `iTargetLockKey` (tecla), `iTargetLockMode` (1 = mantener, 0 = alternar) y `fTargetLockRotationSpeed` (0 = instantáneo, >0 = giro suave).

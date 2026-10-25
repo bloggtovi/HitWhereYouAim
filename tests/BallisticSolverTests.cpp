@@ -190,6 +190,33 @@ int main()
 	TestSkyrimAngleConvention( "behind-left, below", { 0, 0, 900 }, { -1200, -2500, 100 }, { 0, 0, 0 }, 4500, g * 0.35 );
 	TestSkyrimAngleConvention( "moving target", { 0, 0, 100 }, { 800, 2500, 150 }, { -400, 100, 0 }, 4500, g * 0.35 );
 
+	// Why the final solve uses the projectile's real initial velocity: aim solved for an estimated
+	// speed, arrow flies at the real one. A human torso is roughly 25-30 units across the shoulders.
+	std::printf( "-- Sensitivity: solving with a wrong speed estimate --\n" );
+	for( double distanceMeters : { 30.0, 60.0, 100.0 } )
+	{
+		for( double speedError : { 0.02, 0.05, 0.10 } )
+		{
+			Vector3 origin{ 0, 100, 0 };
+			Vector3 target{ 0, 100, distanceMeters / 0.0142875 };
+			double realSpeed = 4500.0;
+			double estimated = realSpeed * ( 1.0 + speedError );
+			double gravity = g * 0.35;
+
+			BallisticSolver::Result r;
+			if( !BallisticSolver::Solve( origin, target, { 0, 0, 0 }, estimated, gravity, r, false ) )
+				continue;
+
+			// Same direction, real speed
+			Vector3 dir = r.launchVelocity * ( 1.0 / BallisticSolver::Length( r.launchVelocity ) );
+			Vector3 real = dir * realSpeed;
+			double t = ( target.z - origin.z ) / real.z;
+			Vector3 p = ProjectilePosition( origin, real, gravity, t );
+			std::printf( "info %5.0f m, speed estimate %+4.0f%% -> arrow lands %6.1f units (%4.2f m) low\n",
+				distanceMeters, speedError * 100, target.y - p.y, ( target.y - p.y ) * 0.0142875 );
+		}
+	}
+
 	std::printf( "\n%d checks, %d failures\n", g_checks, g_failures );
 	return g_failures == 0 ? 0 : 1;
 }

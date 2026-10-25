@@ -76,6 +76,7 @@ namespace
 		case SKSE::MessagingInterface::kPreLoadGame:
 			TrueHUDArrowTrail::Stop();
 			TargetLock::Unlock();
+			ProjectileDiagnostics::Clear();
 			break;
 		case SKSE::MessagingInterface::kPostLoad:
 			TrueHUDArrowTrail::Install();
