@@ -14,6 +14,16 @@ jobs:
         with:
           submodules: recursive
 
+      # Game-independent unit tests first: they take seconds and need no dependencies
+      - name: Configure unit tests
+        run: cmake -S tests -B build-tests
+
+      - name: Build unit tests
+        run: cmake --build build-tests --config Release
+
+      - name: Run unit tests
+        run: ctest --test-dir build-tests -C Release --output-on-failure -V
+
       - name: Configure
         shell: pwsh
         run: |

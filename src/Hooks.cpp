@@ -90,9 +90,10 @@ void Hooks::PlayerProjectileCalculateLaunchAngleHook::CalculatePlayerProjectileL
 	bool isFreeRotation		= thirdPersonState && thirdPersonState->GetFreeRotationMode();
 	if( Settings::bEnabled &&
 		(
-			// Disable if free rotation is enabled for FPS and TPS
+			// Disable if free rotation is enabled for FPS and TPS, unless a target lock is aiming the
+			// camera. The offset can be negative too, hence the absolute value.
 			(
-				( !isFreeRotation || thirdPersonState->freeRotation.x < 0.1f )
+				( !isFreeRotation || std::abs( thirdPersonState->freeRotation.x ) < 0.1f || TargetLock::IsLocked() )
 				&&
 				(
 					cameraState->id == RE::CameraState::kFirstPerson ||
@@ -178,8 +179,21 @@ void Hooks::PlayerProjectileCalculateLaunchAngleHook::CalculatePlayerProjectileL
 			RE::NiPoint3 predicted;
 			float originalPitch = *out_pitch;
 			float originalYaw = *out_yaw;
+
+			// A locked target is known exactly, so solve the full trajectory (gravity and the
+			// target's current velocity) whatever pitch correction mode is configured
+			if( isTargetLocked )
+			{
+				firingAngleCalculated = SolveBallisticIntercept(
+					fireOrigin, aimLocation, &targetVelocity,
+					a_projectile->GetSpeed(), a_projectile->GetGravity() * GetWorldGravity(),
+					nullptr, out_pitch, out_yaw );
+
+				PrintDebugInfo( "Aim assist mode: Target lock ({})", firingAngleCalculated ? "ballistic intercept" : "fallback" );
+			}
+
 			// Use ballistic solver to solve the aim pitch
-			if( Settings::IsAutomaticPitchEnabled() )
+			if( !firingAngleCalculated && Settings::IsAutomaticPitchEnabled() )
 			{
 				// Zero out the velocity prediction if not needed
 				if( !Settings::bEnabledTargetLeading )
@@ -219,8 +233,9 @@ void Hooks::PlayerProjectileCalculateLaunchAngleHook::CalculatePlayerProjectileL
 				}
 			}
 
-			// Ignore angle correction greater than limit when using target leading mode
-			if( Settings::IsTargetLeadingEnabled() )
+			// Ignore angle correction greater than limit when using target leading mode. A target
+			// lock already put the crosshair on the target, so its correction is never discarded.
+			if( Settings::IsTargetLeadingEnabled() && !isTargetLocked )
 			{
 
 				float angleDeltaLimit = Settings::fMaxLeadingAngle * degToRad;
