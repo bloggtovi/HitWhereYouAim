@@ -144,6 +144,7 @@ struct Settings
 	// Target lock
 	static inline bool		bTargetLockEnabled;
 	static inline uint32_t	iTargetLockKey;
+	static inline uint32_t	iTargetLockMode;
 	static inline float		fTargetLockMaxDistance;
 	static inline float		fTargetLockWindowWidth;
 	static inline float		fTargetLockWindowHeight;

@@ -21,7 +21,16 @@ Data/MCM/Config/HitWhereYouAim/settings.ini
 
 ## Target lock
 
-Press **V** (configurable with `iTargetLockKey` in `[TargetLock]`) to lock the camera onto the actor nearest the crosshair. The screen center then follows the target every frame, whether you or the target move, so shots fired while locked go straight at it. Press the key again to release. The lock also releases when the target dies, goes beyond `fTargetLockMaxDistance`, or stays out of sight longer than `fTargetLockLoseSightTime`. With TrueHUD installed, the locked actor's health bar is shown.
+Pressing the **left mouse button** snaps the screen center instantly onto the actor nearest the crosshair, in the same frame as the click, so a quick click or a held attack, bow draw or spell goes straight at it. While the button is held the crosshair stays on the target, whether you or the target move; releasing the button releases the lock. The click still attacks as usual.
+
+Set `iTargetLockMode = 0` for toggle mode (one press locks, the next releases), `iTargetLockKey` to use another key, and `fTargetLockRotationSpeed` above 0 for a smooth turn instead of a snap. The lock also releases when the target dies, goes beyond `fTargetLockMaxDistance`, or stays out of sight longer than `fTargetLockLoseSightTime`. With TrueHUD installed, the locked actor's health bar is shown.
+
+## Compatibility
+
+- If another plugin has already patched one of the engine call sites this plugin hooks, that single hook is skipped with a warning in `HitWhereYouAim.log` instead of aborting the game. Everything else keeps working.
+- Target lock reads the key from the game's own input device every frame in addition to listening for input events, so it still works when another plugin consumes the button event first.
+- Clicks inside any menu that shows the mouse cursor are ignored, including menus kept unpaused by mods such as SkyrimSouls RE.
+- TrueHUD is optional. If another mod already owns the TrueHUD target bar, the lock still works without showing it.
 
 Settings are read from `Data/MCM/Config/HitWhereYouAim/settings.ini` and then overridden by `Data/MCM/Settings/HitWhereYouAim.ini` if present. If neither file exists the plugin falls back to built-in defaults instead of aborting the game.
 

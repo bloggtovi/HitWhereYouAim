@@ -6,8 +6,16 @@
 #include <cmath>
 #include <numbers>
 
-// Camera target lock: a key press picks the actor nearest the crosshair and keeps the screen
+enum class TargetLockMode
+{
+	kToggle,
+	kHold,
+};
+
+// Camera target lock: the lock key picks the actor nearest the crosshair and keeps the screen
 // center on it every frame, whether the player or the target moves.
+// Hold mode (default, left mouse button): snaps on press, tracks while held, releases on release.
+// Toggle mode: one press locks, the next press releases.
 class TargetLock
 {
 public:
@@ -30,18 +38,72 @@ public:
 		return target.get() != nullptr;
 	}
 
-	static void Toggle()
+	static bool IsHoldMode()
 	{
-		if( IsLocked() )
+		return Settings::iTargetLockMode == (uint32_t)TargetLockMode::kHold;
+	}
+
+	// Called every frame. Reads the key straight from the game's input device, so presses and
+	// releases are still seen when another plugin's input sink consumes the button event first.
+	static void Poll()
+	{
+		if( !Settings::bTargetLockEnabled )
+			return;
+
+		bool held = IsKeyHeld();
+		if( IsInMenu() )
 		{
-			Unlock( true );
+			// Clicks inside menus are not aim input
+			if( IsHoldMode() )
+				Unlock();
+			keyWasHeld = held;
 			return;
 		}
 
+		if( held && !keyWasHeld )
+			OnKeyPressed();
+		else if( !held && keyWasHeld )
+			OnKeyReleased();
+	}
+
+	static void OnKeyPressed()
+	{
+		keyWasHeld = true;
+
+		if( IsHoldMode() )
+		{
+			if( !IsLocked() )
+				Lock( false );
+
+			// Turn right away, in the same frame as the click, so even a quick click that
+			// fires immediately goes at the target
+			if( IsLocked() )
+				Update( 0.0f, true );
+		}
+		else if( IsLocked() )
+		{
+			Unlock( true );
+		}
+		else
+		{
+			Lock( true );
+		}
+	}
+
+	static void OnKeyReleased()
+	{
+		keyWasHeld = false;
+		if( IsHoldMode() )
+			Unlock( true );
+	}
+
+	static void Lock( bool a_notifyNoTarget )
+	{
 		auto newTarget = FindTarget();
 		if( !newTarget )
 		{
-			Notify( "No hay objetivo para fijar" );
+			if( a_notifyNoTarget )
+				Notify( "No hay objetivo para fijar" );
 			return;
 		}
 
@@ -77,7 +139,7 @@ public:
 			Notify( "Objetivo liberado" );
 	}
 
-	static void Update( float a_delta )
+	static void Update( float a_delta, bool a_instant = false )
 	{
 		if( !target )
 			return;
@@ -136,8 +198,10 @@ public:
 
 		desiredPitch = std::clamp( desiredPitch, -maxPitch, maxPitch );
 
-		// Frame rate independent exponential smoothing
-		float blend = 1.0f - std::exp( -std::max( Settings::fTargetLockRotationSpeed, 0.1f ) * a_delta );
+		// Rotation speed 0 means snap. Otherwise use frame rate independent exponential smoothing.
+		float blend = 1.0f;
+		if( !a_instant && Settings::fTargetLockRotationSpeed > 0.0f )
+			blend = 1.0f - std::exp( -Settings::fTargetLockRotationSpeed * a_delta );
 
 		auto thirdPersonState = isThirdPerson ? skyrim_cast<RE::ThirdPersonState*>( cameraState ) : nullptr;
 		if( thirdPersonState && thirdPersonState->GetFreeRotationMode() )
@@ -170,26 +234,28 @@ private:
 			if( !a_event || !Settings::bTargetLockEnabled )
 				return RE::BSEventNotifyControl::kContinue;
 
-			auto ui = RE::UI::GetSingleton();
-			if( !ui || ui->GameIsPaused() || ui->IsMenuOpen( RE::Console::MENU_NAME ) )
+			// Menus are handled by Poll()
+			if( IsInMenu() )
 				return RE::BSEventNotifyControl::kContinue;
 
+			// The event path reacts in the same frame as the click, before the attack is processed.
+			// keyWasHeld keeps it and Poll() from handling the same press twice.
 			for( auto event = *a_event; event; event = event->next )
 			{
 				if( event->GetEventType() != RE::INPUT_EVENT_TYPE::kButton )
 					continue;
 
 				auto button = event->AsButtonEvent();
-				if( !button || !button->IsDown() )
+				if( !button || ToKeyCode( event->GetDevice(), button->GetIDCode() ) != Settings::iTargetLockKey )
 					continue;
 
-				if( ToKeyCode( event->GetDevice(), button->GetIDCode() ) == Settings::iTargetLockKey )
-				{
-					Toggle();
-					break;
-				}
+				if( button->IsDown() && !keyWasHeld )
+					OnKeyPressed();
+				else if( button->IsUp() && keyWasHeld )
+					OnKeyReleased();
 			}
 
+			// Never consume the event: the same button still attacks, draws the bow or casts
 			return RE::BSEventNotifyControl::kContinue;
 		}
 
@@ -213,6 +279,53 @@ private:
 			}
 		}
 	};
+
+	// Any open menu that pauses the game or shows the mouse cursor. Checking the cursor flag also
+	// covers mods such as SkyrimSouls RE that keep menus from pausing the game.
+	static bool IsInMenu()
+	{
+		auto ui = RE::UI::GetSingleton();
+		if( !ui )
+			return true;
+
+		if( ui->GameIsPaused() )
+			return true;
+
+		for( const auto& menu : ui->menuStack )
+		{
+			if( menu && ( menu->PausesGame() || menu->UsesCursor() ) )
+				return true;
+		}
+
+		return false;
+	}
+
+	static bool IsKeyHeld()
+	{
+		auto inputManager = RE::BSInputDeviceManager::GetSingleton();
+		if( !inputManager )
+			return false;
+
+		uint32_t key = Settings::iTargetLockKey;
+		if( key >= 280 && key <= 281 )
+		{
+			auto gamepad = inputManager->GetGamepad();
+			return gamepad && gamepad->IsPressed( key == 280 ? 0x9 : 0xA );
+		}
+		if( key >= 266 )
+		{
+			auto gamepad = inputManager->GetGamepad();
+			return gamepad && key - 266 < 16 && gamepad->IsPressed( 1u << ( key - 266 ) );
+		}
+		if( key >= 256 )
+		{
+			auto mouse = inputManager->GetMouse();
+			return mouse && mouse->IsPressed( key - 256 );
+		}
+
+		auto keyboard = inputManager->GetKeyboard();
+		return keyboard && keyboard->IsPressed( key );
+	}
 
 	static RE::Actor* FindTarget()
 	{
@@ -262,4 +375,5 @@ private:
 	static inline RE::ActorHandle target;
 	static inline float timeOutOfSight = 0.0f;
 	static inline bool hasTrueHUDControl = false;
+	static inline bool keyWasHeld = false;
 };
