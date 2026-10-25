@@ -150,6 +150,7 @@ struct Settings
 	static inline float		fTargetLockWindowHeight;
 	static inline float		fTargetLockRotationSpeed;
 	static inline float		fTargetLockLoseSightTime;
+	static inline float		fTargetLockReleaseDelay;
 	static inline bool		bTargetLockNotification;
 
 	// Debug

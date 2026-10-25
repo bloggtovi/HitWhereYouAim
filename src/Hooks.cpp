@@ -116,6 +116,17 @@ void Hooks::PlayerProjectileCalculateLaunchAngleHook::CalculatePlayerProjectileL
 			&aimLocation,
 			&pickData );
 
+		// With a target lock the shot goes straight at the locked adversary, even if the crosshair
+		// ray first touches something else such as a body lying in front of it
+		RE::NiPoint3 lockedAimPoint;
+		bool isTargetLocked = false;
+		if( auto lockedTarget = TargetLock::GetLockedTarget( lockedAimPoint ) )
+		{
+			aimLocation = lockedAimPoint;
+			target = lockedTarget;
+			isTargetLocked = true;
+		}
+
 		RE::NiPoint3 rayEnd = ((RE::NiPoint3&)(pickData.rayInput.to.quad.m128_f32) / havokScaling);
 		auto impactDepth = GetImpactDistanceAheadOfProjectileOrigin( camera->world.translate, rayEnd, aimLocation, fireOrigin );
 		PrintDebugInfo( "Crosshair impact depth = {}", impactDepth );
@@ -123,7 +134,7 @@ void Hooks::PlayerProjectileCalculateLaunchAngleHook::CalculatePlayerProjectileL
 		// Cancel launch angle modification if the ray impact is behind the projectile origin
 		if( impactDepth > 0 )
 		{
-			if( Settings::bTargetDepthPrediction )
+			if( Settings::bTargetDepthPrediction && !isTargetLocked )
 			{
 				// Clamp depth to potential target if there is one
 				RE::NiPoint3 rayDelta = camera->world.translate - aimLocation;

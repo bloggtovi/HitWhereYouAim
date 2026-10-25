@@ -21,7 +21,7 @@ Data/MCM/Config/HitWhereYouAim/settings.ini
 
 ## Target lock
 
-Pressing the **left mouse button** snaps the screen center instantly onto the actor nearest the crosshair, in the same frame as the click, so a quick click or a held attack, bow draw or spell goes straight at it. While the button is held the crosshair stays on the target, whether you or the target move; releasing the button releases the lock. The click still attacks as usual.
+Pressing the **left mouse button** snaps the screen center instantly onto the standing adversary nearest the crosshair on screen (dead, bleeding out or knocked down actors are never picked), in the same frame as the click, so a quick click or a held attack, bow draw or spell goes straight at it. While the button is held the crosshair stays on the target, whether you or the target move; releasing the button releases the lock after `fTargetLockReleaseDelay` seconds, so the arrow fired on release still goes at the target. While locked, arrows and bolts aim at the locked adversary's torso even if the crosshair ray first touches a body lying in front of it. The click still attacks as usual.
 
 Set `iTargetLockMode = 0` for toggle mode (one press locks, the next releases), `iTargetLockKey` to use another key, and `fTargetLockRotationSpeed` above 0 for a smooth turn instead of a snap. The lock also releases when the target dies, goes beyond `fTargetLockMaxDistance`, or stays out of sight longer than `fTargetLockLoseSightTime`. With TrueHUD installed, the locked actor's health bar is shown.
 

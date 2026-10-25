@@ -3,7 +3,11 @@
 ## Nuevo en 1.2.0: bloqueo de objetivo (`src/TargetLock.h`)
 - Al pulsar el **clic izquierdo** la mira salta **al instante** sobre el adversario más cercano a ella, en el mismo fotograma del clic, así que sirve con clic rápido o sostenido. Mientras se mantiene, la mira sigue al objetivo aunque se mueva el jugador o el objetivo. Al soltar, se libera. El clic sigue atacando con normalidad, porque el evento no se consume.
 - Configurable: `iTargetLockKey` (tecla), `iTargetLockMode` (1 = mantener, 0 = alternar) y `fTargetLockRotationSpeed` (0 = instantáneo, >0 = giro suave).
-- Usa el mismo selector de objetivos del mod: prioriza hostiles, descarta seguidores y exige línea de visión.
+- **Selector propio:** elige al adversario cuyo torso está más cerca de la mira en pantalla. Mide la distancia corrigiendo el aspecto de la pantalla y exige línea de visión. Los hostiles cuentan dentro de la ventana de búsqueda. Los no hostiles (por ejemplo, un ciervo al cazar) solo cuentan si la mira está encima. Nunca elige seguidores.
+- **Sin saltos:** cada clic elige una vez y el objetivo queda fijo mientras se mantiene el botón.
+- **Abatidos excluidos:** muertos, desangrándose, inconscientes, derribados o levantándose nunca se eligen. Si el objetivo cae, se suelta al instante y la mira no vuelve a él.
+- **El proyectil va al objetivo fijado:** con un objetivo fijado, la flecha o el virote apunta a su torso, aunque el rayo de la mira toque antes un cuerpo caído delante.
+- **Margen al soltar:** arco y ballesta disparan al soltar el botón, así que el bloqueo se mantiene `fTargetLockReleaseDelay` segundos (0,5 por defecto) después de soltar.
 - Apunta al torso (hueso `NPC Spine2`) o, en criaturas, al centro de su volumen.
 - Se suelta solo si el objetivo muere, se aleja más de `fTargetLockMaxDistance` o queda fuera de vista más de `fTargetLockLoseSightTime` segundos. También al cambiar de celda o cargar partida.
 - Funciona en primera y tercera persona, también con la cámara libre de tercera persona. No actúa en VATS, kill cams ni muebles.

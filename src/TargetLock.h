@@ -72,6 +72,11 @@ public:
 
 		if( IsHoldMode() )
 		{
+			// Every new click picks the adversary nearest the crosshair at that moment. The choice
+			// then stays fixed for the whole hold, so the crosshair never hops between targets.
+			if( releaseTimer > 0.0f )
+				Unlock();
+
 			if( !IsLocked() )
 				Lock( false );
 
@@ -93,8 +98,27 @@ public:
 	static void OnKeyReleased()
 	{
 		keyWasHeld = false;
-		if( IsHoldMode() )
-			Unlock( true );
+
+		// Bows and crossbows fire on release, a few frames after the button goes up. Keep tracking
+		// briefly so that shot still goes at the target.
+		if( IsHoldMode() && IsLocked() )
+		{
+			releaseTimer = std::max( Settings::fTargetLockReleaseDelay, 0.0f );
+			if( releaseTimer <= 0.0f )
+				Unlock( true );
+		}
+	}
+
+	// Aim point and actor of the current lock, used to send projectiles straight at the locked
+	// target instead of at whatever the crosshair ray hits first (a corpse lying in front, say)
+	static RE::Actor* GetLockedTarget( RE::NiPoint3& out_aimPoint )
+	{
+		auto actor = target.get();
+		if( !actor || !IsValidTarget( actor.get() ) )
+			return nullptr;
+
+		out_aimPoint = GetAimPoint( actor.get() );
+		return actor.get();
 	}
 
 	static void Lock( bool a_notifyNoTarget )
@@ -127,6 +151,7 @@ public:
 
 		target.reset();
 		timeOutOfSight = 0.0f;
+		releaseTimer = 0.0f;
 
 		if( hasTrueHUDControl && trueHUD )
 		{
@@ -157,8 +182,19 @@ public:
 		if( !player || !camera || !cameraState )
 			return;
 
+		if( releaseTimer > 0.0f )
+		{
+			releaseTimer -= a_delta;
+			if( releaseTimer <= 0.0f )
+			{
+				Unlock( true );
+				return;
+			}
+		}
+
+		// A downed target is dropped at once and never picked again while it stays down
 		auto targetActor = target.get();
-		if( !targetActor || targetActor->IsDead() || targetActor->IsDisabled() || !targetActor->Get3D2() )
+		if( !targetActor || !IsValidTarget( targetActor.get() ) )
 		{
 			Unlock( true );
 			return;
@@ -327,15 +363,123 @@ private:
 		return keyboard && keyboard->IsPressed( key );
 	}
 
+	// Standing, active combatants only. Dead, bleeding out, knocked down or getting up actors are
+	// excluded so a corpse lying under a live adversary is never chosen.
+	static bool IsValidTarget( RE::Actor* a_actor )
+	{
+		auto player = RE::PlayerCharacter::GetSingleton();
+		if( !a_actor || a_actor == player || a_actor->IsDead() || a_actor->IsDisabled() )
+			return false;
+
+		auto actor3D = a_actor->Get3D2();
+		if( !actor3D || actor3D->flags.any( RE::NiAVObject::Flag::kNotVisible ) )
+			return false;
+
+		auto state = a_actor->AsActorState();
+		if( state->IsBleedingOut() || state->IsUnconscious() || state->GetKnockState() != RE::KNOCK_STATE_ENUM::kNormal )
+			return false;
+
+		return true;
+	}
+
+	static bool IsFollower( RE::Actor* a_actor, RE::PlayerCharacter* a_player )
+	{
+		if( a_actor->IsPlayerTeammate() )
+			return true;
+
+		auto commander = a_actor->GetCommandingActor();
+		return commander && commander.get() == a_player;
+	}
+
+	// Normalized screen position (-1..1, +y up) of a world point, false when behind the camera
+	static bool ProjectToScreen( RE::NiCamera* a_camera, const RE::NiPoint3& a_world, float& out_x, float& out_y )
+	{
+		float x, y, depth;
+		if( !RE::NiCamera::WorldPtToScreenPt3( a_camera->GetRuntimeData().worldToCam, a_camera->GetRuntimeData2().port, a_world, x, y, depth, 1.0e-5f ) )
+			return false;
+
+		if( depth <= 0.0f || depth >= 1.0f )
+			return false;
+
+		out_x = x * 2.0f - 1.0f;
+		out_y = y * 2.0f - 1.0f;
+		return true;
+	}
+
+	// The adversary whose torso is nearest the crosshair on screen. Hostile actors qualify inside the
+	// search window; anything else (a deer while hunting, say) only when the crosshair is right on it.
 	static RE::Actor* FindTarget()
 	{
-		auto candidate = GetPotentialPlayerTarget(
-			Settings::fTargetLockMaxDistance * meterToGameUnitLock,
-			0.0f, 0.0f, nullptr,
-			Settings::fTargetLockWindowWidth,
-			Settings::fTargetLockWindowHeight ).first;
+		auto processLists = RE::ProcessLists::GetSingleton();
+		auto player = RE::PlayerCharacter::GetSingleton();
+		auto camera = RE::Main::WorldRootCamera();
+		auto renderer = RE::BSGraphics::Renderer::GetSingleton();
+		if( !processLists || !player || !camera || !renderer )
+			return nullptr;
 
-		return candidate ? candidate->As<RE::Actor>() : nullptr;
+		auto screenSize = renderer->GetScreenSize();
+		float aspect = screenSize.height ? (float)screenSize.width / (float)screenSize.height : 1.0f;
+
+		// Crosshair in the same normalized space (Settings Y offset grows downward)
+		float crosshairX = Settings::fCrosshairPosX;
+		float crosshairY = -Settings::fCrosshairPosY;
+
+		float maxDistance = Settings::fTargetLockMaxDistance * meterToGameUnitLock;
+		float windowX = std::max( Settings::fTargetLockWindowWidth, 0.0001f );
+		float windowY = std::max( Settings::fTargetLockWindowHeight, 0.0001f );
+
+		RE::Actor* best = nullptr;
+		float bestScore = FLT_MAX;
+
+		for( auto& handle : processLists->highActorHandles )
+		{
+			auto actorPtr = handle.get();
+			auto actor = actorPtr.get();
+			if( !IsValidTarget( actor ) || IsFollower( actor, player ) )
+				continue;
+
+			if( actor->GetPosition().GetSquaredDistance( player->GetPosition() ) > maxDistance * maxDistance )
+				continue;
+
+			float x, y;
+			if( !ProjectToScreen( camera, GetAimPoint( actor ), x, y ) )
+				continue;
+
+			float dx = x - crosshairX;
+			float dy = y - crosshairY;
+
+			if( actor->IsHostileToActor( player ) )
+			{
+				if( std::abs( dx ) > windowX || std::abs( dy ) > windowY )
+					continue;
+			}
+			else if( !IsCrosshairOnActor( camera, actor, crosshairX, crosshairY ) )
+			{
+				continue;
+			}
+
+			// Distance as seen on screen, so horizontal and vertical offsets weigh the same
+			float score = dx * dx * aspect * aspect + dy * dy;
+			if( score >= bestScore )
+				continue;
+
+			// Line of sight is the expensive test, so run it only for a would-be winner
+			if( !HasLineOfSight( player, actor ) )
+				continue;
+
+			best = actor;
+			bestScore = score;
+		}
+
+		return best;
+	}
+
+	static bool IsCrosshairOnActor( RE::NiCamera* a_camera, RE::Actor* a_actor, float a_crosshairX, float a_crosshairY )
+	{
+		auto bounds = ProjectReferenceBoundsToScreen( a_camera, a_actor, 0.0f, 0.0f );
+		return bounds.valid &&
+			a_crosshairX >= bounds.min.x && a_crosshairX <= bounds.max.x &&
+			a_crosshairY >= bounds.min.y && a_crosshairY <= bounds.max.y;
 	}
 
 	static RE::NiPoint3 GetAimPoint( RE::Actor* a_actor )
@@ -376,4 +520,5 @@ private:
 	static inline float timeOutOfSight = 0.0f;
 	static inline bool hasTrueHUDControl = false;
 	static inline bool keyWasHeld = false;
+	static inline float releaseTimer = 0.0f;
 };
