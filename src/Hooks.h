@@ -7,6 +7,7 @@
 #include "CandidateBoundsDebug.h"
 #include "TargetLock.h"
 #include "ProjectileDiagnostics.h"
+#include "ProjectileGuidance.h"
 
 struct CrosshairRaycastCache
 {
@@ -199,6 +200,7 @@ namespace Hooks
 		{
 			func( a_this, a_delta );
 			TargetLock::Poll();
+			ProjectileGuidance::Update( a_delta );
 			TargetLock::Update( a_delta );
 			ProjectileDiagnostics::Update( a_delta );
 			TrueHUDArrowTrail::Update();

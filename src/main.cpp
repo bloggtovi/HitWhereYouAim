@@ -77,6 +77,7 @@ namespace
 			TrueHUDArrowTrail::Stop();
 			TargetLock::Unlock();
 			ProjectileDiagnostics::Clear();
+			ProjectileGuidance::Clear();
 			break;
 		case SKSE::MessagingInterface::kPostLoad:
 			TrueHUDArrowTrail::Install();

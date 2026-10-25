@@ -152,6 +152,8 @@ struct Settings
 	static inline float		fTargetLockLoseSightTime;
 	static inline float		fTargetLockReleaseDelay;
 	static inline bool		bTargetLockFullSpeed;
+	static inline bool		bTargetLockGuidance;
+	static inline float		fTargetLockGuidanceTurnRate;
 	static inline bool		bTargetLockNotification;
 
 	// Debug

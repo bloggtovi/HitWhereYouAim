@@ -37,6 +37,8 @@ void Settings::Load()
 	settings->RegisterBinding( { &fTargetLockLoseSightTime,	Settings::BindingType::kFloat,		"TargetLock", "fTargetLockLoseSightTime",	2.0f } );
 	settings->RegisterBinding( { &fTargetLockReleaseDelay,	Settings::BindingType::kFloat,		"TargetLock", "fTargetLockReleaseDelay",	0.5f } );
 	settings->RegisterBinding( { &bTargetLockFullSpeed,		Settings::BindingType::kBoolean,	"TargetLock", "bTargetLockFullSpeed",		true } );
+	settings->RegisterBinding( { &bTargetLockGuidance,		Settings::BindingType::kBoolean,	"TargetLock", "bTargetLockGuidance",		true } );
+	settings->RegisterBinding( { &fTargetLockGuidanceTurnRate,	Settings::BindingType::kFloat,	"TargetLock", "fTargetLockGuidanceTurnRate",	3600.0f } );
 	settings->RegisterBinding( { &bTargetLockNotification,	Settings::BindingType::kBoolean,	"TargetLock", "bTargetLockNotification",	false } );
 
 	settings->RegisterBinding( { &bEnableLogging,			Settings::BindingType::kBoolean,	"Debug", "bEnableLogging",				false } );

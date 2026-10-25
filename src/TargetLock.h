@@ -132,6 +132,49 @@ public:
 		}
 	}
 
+	// Set every frame by projectile guidance: an arrow is still flying at the locked target, so the
+	// crosshair stays on it until the impact even after the release delay
+	static void SetProjectileInFlight( bool a_inFlight )
+	{
+		projectileInFlight = a_inFlight;
+	}
+
+	static RE::ActorHandle GetTargetHandle()
+	{
+		return target;
+	}
+
+	// Standing, active combatants only. Dead, bleeding out, knocked down or getting up actors are
+	// excluded so a corpse lying under a live adversary is never chosen.
+	static bool IsValidTarget( RE::Actor* a_actor )
+	{
+		auto player = RE::PlayerCharacter::GetSingleton();
+		if( !a_actor || a_actor == player || a_actor->IsDead() || a_actor->IsDisabled() )
+			return false;
+
+		auto actor3D = a_actor->Get3D2();
+		if( !actor3D || actor3D->flags.any( RE::NiAVObject::Flag::kNotVisible ) )
+			return false;
+
+		auto state = a_actor->AsActorState();
+		if( state->IsBleedingOut() || state->IsUnconscious() || state->GetKnockState() != RE::KNOCK_STATE_ENUM::kNormal )
+			return false;
+
+		return true;
+	}
+
+	// Upper torso of humanoids; creatures fall back to the center of their bounds
+	static RE::NiPoint3 GetAimPoint( RE::Actor* a_actor )
+	{
+		auto root = a_actor->Get3D2();
+
+		static RE::BSFixedString spineName{ "NPC Spine2 [Spn2]" };
+		if( auto spine = root->GetObjectByName( spineName ) )
+			return spine->world.translate;
+
+		return root->worldBound.center;
+	}
+
 	// Aim point and actor of the current lock, used to send projectiles straight at the locked
 	// target instead of at whatever the crosshair ray hits first (a corpse lying in front, say)
 	static RE::Actor* GetLockedTarget( RE::NiPoint3& out_aimPoint )
@@ -210,8 +253,17 @@ public:
 			releaseTimer -= a_delta;
 			if( releaseTimer <= 0.0f )
 			{
-				Unlock( true );
-				return;
+				// Keep the crosshair on the target while a guided arrow is still flying at it. The timer
+				// stays positive so a new click still drops this lock and picks the nearest adversary.
+				if( projectileInFlight )
+				{
+					releaseTimer = 0.05f;
+				}
+				else
+				{
+					Unlock( true );
+					return;
+				}
 			}
 		}
 
@@ -408,25 +460,6 @@ private:
 		return ( keyboard->GetRuntimeData().curState[key] & 0x80 ) != 0;
 	}
 
-	// Standing, active combatants only. Dead, bleeding out, knocked down or getting up actors are
-	// excluded so a corpse lying under a live adversary is never chosen.
-	static bool IsValidTarget( RE::Actor* a_actor )
-	{
-		auto player = RE::PlayerCharacter::GetSingleton();
-		if( !a_actor || a_actor == player || a_actor->IsDead() || a_actor->IsDisabled() )
-			return false;
-
-		auto actor3D = a_actor->Get3D2();
-		if( !actor3D || actor3D->flags.any( RE::NiAVObject::Flag::kNotVisible ) )
-			return false;
-
-		auto state = a_actor->AsActorState();
-		if( state->IsBleedingOut() || state->IsUnconscious() || state->GetKnockState() != RE::KNOCK_STATE_ENUM::kNormal )
-			return false;
-
-		return true;
-	}
-
 	static bool IsFollower( RE::Actor* a_actor, RE::PlayerCharacter* a_player )
 	{
 		if( a_actor->IsPlayerTeammate() )
@@ -552,18 +585,6 @@ private:
 			a_crosshairY >= bounds.min.y && a_crosshairY <= bounds.max.y;
 	}
 
-	static RE::NiPoint3 GetAimPoint( RE::Actor* a_actor )
-	{
-		auto root = a_actor->Get3D2();
-
-		// Upper torso of humanoids; creatures fall back to the center of their bounds
-		static RE::BSFixedString spineName{ "NPC Spine2 [Spn2]" };
-		if( auto spine = root->GetObjectByName( spineName ) )
-			return spine->world.translate;
-
-		return root->worldBound.center;
-	}
-
 	static float WrapAngle( float a_angle )
 	{
 		return std::remainder( a_angle, 2.0f * std::numbers::pi_v<float> );
@@ -594,4 +615,5 @@ private:
 	static inline uint32_t polledHeldFrames = 0;
 	static inline uint32_t polledReleasedFrames = 0;
 	static inline bool polledSawHeld = false;
+	static inline bool projectileInFlight = false;
 };

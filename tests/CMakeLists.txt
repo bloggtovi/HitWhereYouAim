@@ -17,3 +17,11 @@ if(MSVC)
 endif()
 
 add_test(NAME BallisticSolverTests COMMAND BallisticSolverTests)
+
+add_executable(GuidanceTests GuidanceTests.cpp)
+target_include_directories(GuidanceTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../src")
+if(MSVC)
+	target_compile_options(GuidanceTests PRIVATE /W4 /WX /permissive- /utf-8)
+endif()
+
+add_test(NAME GuidanceTests COMMAND GuidanceTests)

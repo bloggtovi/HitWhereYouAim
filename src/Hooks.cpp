@@ -579,6 +579,9 @@ void Hooks::ProjectileInitHook::OverrideProjectileInit( RE::Projectile* a_this, 
 					solvedForLock = SetProjectileAngle( a_this, pitch, yaw );
 				}
 
+				// Whatever the release solve could not foresee (launch point offset, the target changing
+				// direction) is corrected in flight until impact
+				ProjectileGuidance::Begin( a_this, lockedTarget );
 				ProjectileDiagnostics::Begin( a_this, lockedTarget, lockedAimPoint, targetVelocity, speed, gravity, drawPower, solvedForLock );
 			}
 			else if( !a_this->IsFlameProjectile() && !a_this->IsBeamProjectile() )

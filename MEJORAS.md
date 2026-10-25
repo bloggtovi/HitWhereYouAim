@@ -1,5 +1,17 @@
 # Cambios sobre el original (tossaponk/HitWhereYouAim @ master, v1.1)
 
+## Nuevo en 1.5.0: guiado en vuelo hasta el impacto
+Los datos de la tanda 1.4.0 mostraron dos fuentes de error que ningún disparo calculado al soltar
+puede resolver:
+- un **desfase constante del punto de salida**, de 0,7-2 m sin importar la distancia (un error de ángulo crecería con la distancia);
+- **animales que se desvían** de la trayectoria prevista hasta 5 m durante el vuelo.
+
+Cambios:
+- **Guiado en vuelo** (`bTargetLockGuidance`, activado; `GuidanceMath.h` + `ProjectileGuidance.h`): en cada fotograma, hasta el impacto, se recalcula la intercepción desde la posición y la velocidad reales de la flecha hacia la posición y la velocidad actuales del torso, con gravedad, y se gira la flecha hacia esa solución, hasta `fTargetLockGuidanceTurnRate` °/s. Se detiene al impactar, si el objetivo cae o si la flecha ya lo pasó (nunca da la vuelta).
+- **La mira se mantiene sobre el objetivo hasta el impacto**, no solo durante el margen de soltar.
+- **Pruebas de simulación** (`tests/GuidanceTests.cpp`): 60 fps, gravedad, objetivos en zigzag de hasta 6 m/s, error de salida de hasta 1,5 m y un fotograma de retraso. Se exige impactar el 100 % de 1000 disparos aleatorios. Una simulación independiente en Python dio 300/300 impactos (peor caso: 8 cm del centro) frente a 2,5 m de fallo sin guiado.
+- **Límite físico:** el guiado no atraviesa paredes, rocas ni árboles. Si hay un obstáculo sólido entre la flecha y el objetivo, chocará con él.
+
 ## Nuevo en 1.4.0: calibración con datos reales
 Análisis de 42 disparos registrados en partida. Solo 3 de los 32 fallos con objetivo fijado podían
 deberse al cálculo. El factor dominante era la potencia: 18 de 42 disparos salieron por debajo del
