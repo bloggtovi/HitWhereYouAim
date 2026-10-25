@@ -3,6 +3,12 @@
 
 void Settings::Load()
 {
+	CSimpleIniA iniDefault;
+	iniDefault.SetUnicode();
+
+	if( iniDefault.LoadFile( L"Data/MCM/Config/HitWhereYouAim/settings.ini" ) != SI_OK )
+		REX::FAIL( "Data/MCM/Config/HitWhereYouAim/settings.ini is missing!" );
+
 	auto settings = GetSingleton();
 	settings->RegisterBinding( { &bEnabled,					Settings::BindingType::kBoolean,	"Main", "bEnabled",					true } );
 	settings->RegisterBinding( { &bEnabledPitchCorrection,	Settings::BindingType::kBoolean,	"Main", "bEnabledPitchCorrection",	true } );
@@ -27,37 +33,13 @@ void Settings::Load()
 	settings->RegisterBinding( { &fMaxPitchAdjustmentSpeed,	Settings::BindingType::kFloat,		"AngleCorrection", "fMaxPitchAdjustmentSpeed",	360.0f } );
 	settings->RegisterBinding( { &fMountedYawTolerance,		Settings::BindingType::kFloat,		"AngleCorrection", "fMountedYawTolerance",		15.0f } );
 
-	settings->RegisterBinding( { &bTargetLockEnabled,		Settings::BindingType::kBoolean,	"TargetLock", "bTargetLockEnabled",			true } );
-	settings->RegisterBinding( { &iTargetLockKey,			Settings::BindingType::kInteger,	"TargetLock", "iTargetLockKey",				256 } );	// Left mouse button
-	settings->RegisterBinding( { &iTargetLockMode,			Settings::BindingType::kInteger,	"TargetLock", "iTargetLockMode",			1 } );		// Hold
-	settings->RegisterBinding( { &fTargetLockMaxDistance,	Settings::BindingType::kFloat,		"TargetLock", "fTargetLockMaxDistance",		150.0f } );
-	settings->RegisterBinding( { &fTargetLockWindowWidth,	Settings::BindingType::kFloat,		"TargetLock", "fTargetLockWindowWidth",		0.6f } );
-	settings->RegisterBinding( { &fTargetLockWindowHeight,	Settings::BindingType::kFloat,		"TargetLock", "fTargetLockWindowHeight",	0.6f } );
-	settings->RegisterBinding( { &fTargetLockRotationSpeed,	Settings::BindingType::kFloat,		"TargetLock", "fTargetLockRotationSpeed",	0.0f } );	// Instant
-	settings->RegisterBinding( { &fTargetLockLoseSightTime,	Settings::BindingType::kFloat,		"TargetLock", "fTargetLockLoseSightTime",	2.0f } );
-	settings->RegisterBinding( { &fTargetLockReleaseDelay,	Settings::BindingType::kFloat,		"TargetLock", "fTargetLockReleaseDelay",	0.5f } );
-	settings->RegisterBinding( { &bTargetLockFullSpeed,		Settings::BindingType::kBoolean,	"TargetLock", "bTargetLockFullSpeed",		true } );
-	settings->RegisterBinding( { &bTargetLockGuidance,		Settings::BindingType::kBoolean,	"TargetLock", "bTargetLockGuidance",		true } );
-	settings->RegisterBinding( { &fTargetLockGuidanceTurnRate,	Settings::BindingType::kFloat,	"TargetLock", "fTargetLockGuidanceTurnRate",	3600.0f } );
-	settings->RegisterBinding( { &bTargetLockNotification,	Settings::BindingType::kBoolean,	"TargetLock", "bTargetLockNotification",	false } );
-
 	settings->RegisterBinding( { &bEnableLogging,			Settings::BindingType::kBoolean,	"Debug", "bEnableLogging",				false } );
 	settings->RegisterBinding( { &bShowTargetPredictionInfo,Settings::BindingType::kBoolean,	"Debug", "bShowTargetPredictionInfo",	false } );
 	settings->RegisterBinding( { &bShowCrosshairRayImpact,	Settings::BindingType::kBoolean,	"Debug", "bShowCrosshairRayImpact",		false } );
 	settings->RegisterBinding( { &bShowLastProjectilePath,	Settings::BindingType::kBoolean,	"Debug", "bShowLastProjectilePath",		false } );
 	settings->RegisterBinding( { &bEnabledTargetPrediction,	Settings::BindingType::kBoolean,	"Debug", "bEnabledTargetPrediction",	false } );
-	// On while aiming is being calibrated in game: logs one short summary per arrow
-	settings->RegisterBinding( { &bProjectileDiagnostics,	Settings::BindingType::kBoolean,	"Debug", "bProjectileDiagnostics",		true } );
-	settings->ApplyDefaults();
-
-	// A missing default INI used to abort the game on startup. Fall back to the built-in
-	// defaults instead so the plugin still works without the MCM files installed.
-	CSimpleIniA iniDefault;
-	iniDefault.SetUnicode();
-	if( iniDefault.LoadFile( L"Data/MCM/Config/HitWhereYouAim/settings.ini" ) == SI_OK )
-		settings->Load( iniDefault );
-	else
-		REX::WARN( "Data/MCM/Config/HitWhereYouAim/settings.ini is missing, using built-in defaults" );
+	settings->RegisterBinding( { &bEnableTelemetry,			Settings::BindingType::kBoolean,	"Debug", "bEnableTelemetry",			false } );
+	settings->Load( iniDefault );
 
 	CSimpleIniA iniUser;
 	iniUser.SetUnicode();

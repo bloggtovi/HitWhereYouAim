@@ -5,9 +5,8 @@
 #include "Settings.h"
 #include "TrueHUDArrowTrail.h"
 #include "CandidateBoundsDebug.h"
-#include "TargetLock.h"
-#include "ProjectileDiagnostics.h"
-#include "ProjectileGuidance.h"
+#include "MultiplayerGuard.h"
+#include "Telemetry.h"
 
 struct CrosshairRaycastCache
 {
@@ -59,13 +58,8 @@ namespace Hooks
 			auto addr = util::GetInjectionAddress( RELOCATION_RAW(43009,44200), 
 				"F3 0F 11 ?? 24 38 F3 0F 11 ?? 24 30 48 89 ?? 24 28 48 89 ?? 24 20 4C 8B C5 48 8B D7 48 8B 0D ?? ?? ?? ?? E8", 0x23, "E8" );
 
-			// Another plugin may already have patched this site. Skip the hook instead of
-			// aborting the game; the rest of the plugin keeps working.
 			if( !addr )
-			{
-				REX::WARN( "PlayerProjectileCalculateLaunchAngleHook skipped: target instruction not found (patched by another plugin?)" );
-				return;
-			}
+				REX::FAIL( "Cannot find target instruction for PlayerProjectileCalculateLaunchAngleHook" );
 
 			stl::write_thunk_call<PlayerProjectileCalculateLaunchAngleHook>( addr );
 		}
@@ -92,29 +86,21 @@ namespace Hooks
 			auto addr = util::GetInjectionAddress( RELOCATION_RAW(42727,43894), 
 				"48 8B CD E8 ?? ?? ?? ?? 0F 28 C8 48 8B CE E8 ?? ?? ?? ?? 48 8B CD E8 ?? ?? ?? ?? 0F 28 C8 48 8B CE E8 ?? ?? ?? ??" );
 
-			auto& trampoline = SKSE::GetTrampoline();
-			if( addr )
-			{
-				funcYawFlame = trampoline.write_call<5>( addr + 0xE, SetAimYawFlame );
-				funcPitchFlame = trampoline.write_call<5>( addr + 0x21, SetAimPitchFlame );
-			}
-			else
-			{
-				REX::WARN( "ConcentrationSpellAngleHook(Flame) skipped: target instruction not found (patched by another plugin?)" );
-			}
+			if( !addr )
+				REX::FAIL( "Cannot find target instruction for ConcentrationSpellAngleHook(Flame)" );
 
-			addr = util::GetInjectionAddress( RELOCATION_RAW(42586,43749),
+			auto& trampoline = SKSE::GetTrampoline();
+			funcYawFlame = trampoline.write_call<5>( addr + 0xE, SetAimYawFlame );
+			funcPitchFlame = trampoline.write_call<5>( addr + 0x21, SetAimPitchFlame );
+
+			addr = util::GetInjectionAddress( RELOCATION_RAW(42586,43749), 
 				"49 8B CE E8 ?? ?? ?? ?? 0F 28 C8 48 8B CE E8 ?? ?? ?? ?? 49 8B CE E8 ?? ?? ?? ?? 0F 28 C8 48 8B CE E8 ?? ?? ?? ??" );
 
-			if( addr )
-			{
-				funcYawBeam = trampoline.write_call<5>( addr + 0xE, SetAimYawBeam );
-				funcPitchBeam = trampoline.write_call<5>( addr + 0x21, SetAimPitchBeam );
-			}
-			else
-			{
-				REX::WARN( "ConcentrationSpellAngleHook(Beam) skipped: target instruction not found (patched by another plugin?)" );
-			}
+			if( !addr )
+				REX::FAIL( "Cannot find target instruction for ConcentrationSpellAngleHook(Beam)" );
+
+			funcYawBeam = trampoline.write_call<5>( addr + 0xE, SetAimYawBeam );
+			funcPitchBeam = trampoline.write_call<5>( addr + 0x21, SetAimPitchBeam );
 		}
 	};
 
@@ -146,8 +132,7 @@ namespace Hooks
 
 				if( !addr )
 				{
-					REX::WARN( "PlayerSetAimPitchHook skipped: target instruction not found (patched by another plugin?)" );
-					return;
+					REX::FAIL( "Cannot find target instruction for PlayerSetAimPitchHook" );
 				}
 
 				stl::write_thunk_call<PlayerSetAimPitchHook>( addr );
@@ -185,8 +170,7 @@ namespace Hooks
 
 				if( !addr )
 				{
-					REX::WARN( "ProjectileInitHook skipped: target instruction not found (patched by another plugin?)" );
-					return;
+					REX::FAIL( "Cannot find target instruction for ProjectileInitHook" );
 				}
 
 				stl::write_thunk_call<ProjectileInitHook>( addr );
@@ -199,12 +183,9 @@ namespace Hooks
 		static void thunk( RE::PlayerCharacter* a_this, float a_delta )
 		{
 			func( a_this, a_delta );
-			TargetLock::Poll();
-			ProjectileGuidance::Update( a_delta );
-			TargetLock::Update( a_delta );
-			ProjectileDiagnostics::Update( a_delta );
 			TrueHUDArrowTrail::Update();
 			CandidateBoundsDebug::Update();
+			Telemetry::Update();
 		}
 
 		static inline REL::Relocation<decltype( thunk )> func;

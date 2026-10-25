@@ -51,36 +51,9 @@ struct Settings
 		it->second = a_binding;
 	}
 
-	// Write the registered default of every binding so that keys missing from the INI files
-	// never leave a setting uninitialized.
-	void ApplyDefaults()
-	{
-		for( const auto& [key, binding] : _settings )
-		{
-			switch( binding.type )
-			{
-			case BindingType::kBoolean:
-				*reinterpret_cast<bool*>( binding.pData ) = std::get<bool>( binding.defaults );
-				break;
-			case BindingType::kInteger:
-				*reinterpret_cast<int32_t*>( binding.pData ) = std::get<int32_t>( binding.defaults );
-				break;
-			case BindingType::kFloat:
-				*reinterpret_cast<float*>( binding.pData ) = std::get<float>( binding.defaults );
-				break;
-			case BindingType::kDouble:
-				*reinterpret_cast<double*>( binding.pData ) = std::get<double>( binding.defaults );
-				break;
-			case BindingType::kString:
-				*reinterpret_cast<std::string*>( binding.pData ) = std::get<std::string>( binding.defaults );
-				break;
-			}
-		}
-	}
-
 	void Load( CSimpleIniA& a_ini )
 	{
-		for( const auto& pair : _settings )
+		for( auto pair : _settings )
 		{
 			auto& binding = pair.second;
 			if( a_ini.KeyExists( binding.section.data(), binding.key.data() ) )
@@ -141,27 +114,12 @@ struct Settings
 	static inline float		fMaxPitchAdjustmentSpeed;
 	static inline float		fMountedYawTolerance;
 
-	// Target lock
-	static inline bool		bTargetLockEnabled;
-	static inline uint32_t	iTargetLockKey;
-	static inline uint32_t	iTargetLockMode;
-	static inline float		fTargetLockMaxDistance;
-	static inline float		fTargetLockWindowWidth;
-	static inline float		fTargetLockWindowHeight;
-	static inline float		fTargetLockRotationSpeed;
-	static inline float		fTargetLockLoseSightTime;
-	static inline float		fTargetLockReleaseDelay;
-	static inline bool		bTargetLockFullSpeed;
-	static inline bool		bTargetLockGuidance;
-	static inline float		fTargetLockGuidanceTurnRate;
-	static inline bool		bTargetLockNotification;
-
 	// Debug
 	static inline bool		bEnableLogging;
 	static inline bool		bShowTargetPredictionInfo;
 	static inline bool		bShowCrosshairRayImpact;
 	static inline bool		bShowLastProjectilePath;
 	static inline bool		bEnabledTargetPrediction;
-	static inline bool		bProjectileDiagnostics;
+	static inline bool		bEnableTelemetry;
 };
 
