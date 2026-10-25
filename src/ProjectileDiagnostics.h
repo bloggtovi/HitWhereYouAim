@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cmath>
+#include <numbers>
 #include <vector>
 
 // Flight recorder for the player's projectiles, written to HitWhereYouAim.log.
@@ -35,7 +36,9 @@ public:
 		{
 			if( auto root = a_target->Get3D2() )
 				flight.targetRadius = root->worldBound.radius;
+			flight.targetHealthBefore = GetHealth( a_target );
 		}
+		flight.lastVelocity = a_projectile->GetProjectileRuntimeData().linearVelocity;
 		flight.startPosition = a_projectile->GetPosition();
 		flight.startAimPoint = a_aimPoint;
 		flight.samples.push_back( { 0.0, a_projectile->GetPosition() } );
@@ -91,7 +94,21 @@ private:
 		RE::NiPoint3 arrowAtClosest;
 		RE::NiPoint3 targetAtClosest;
 		RE::NiPoint3 predictedAtClosest;
+
+		// Ground truth and engine behaviour checks
+		float targetHealthBefore = -1.0f;
+		float maxLocationTo3D = 0.0f;           // data.location vs the arrow model's world position
+		float maxVelocityDeviationDeg = 0.0f;   // frame displacement vs the velocity set last frame
+		float sumVelocityDeviationDeg = 0.0f;
+		uint32_t velocityChecks = 0;
+		RE::NiPoint3 lastVelocity;
 	};
+
+	static float GetHealth( RE::Actor* a_actor )
+	{
+		auto owner = a_actor ? a_actor->AsActorValueOwner() : nullptr;
+		return owner ? owner->GetActorValue( RE::ActorValue::kHealth ) : -1.0f;
+	}
 
 	// Returns false when the flight is finished and logged
 	static bool Step( Flight& a_flight, float a_delta )
@@ -108,6 +125,24 @@ private:
 
 		auto& runtimeData = projectile->GetProjectileRuntimeData();
 		RE::NiPoint3 position = projectile->GetPosition();
+
+		// Does data.location match the arrow model, and did the engine move the arrow along the
+		// velocity that was set last frame (by the release solve or by guidance)?
+		if( auto model = projectile->Get3D() )
+			a_flight.maxLocationTo3D = std::max( a_flight.maxLocationTo3D, position.GetDistance( model->world.translate ) );
+
+		RE::NiPoint3 displacement = position - a_flight.samples.back().position;
+		float moved = displacement.Length();
+		float expected = a_flight.lastVelocity.Length();
+		if( moved > 1.0f && expected > 1.0f )
+		{
+			float cosAngle = std::clamp( displacement.Dot( a_flight.lastVelocity ) / ( moved * expected ), -1.0f, 1.0f );
+			float deviation = std::acos( cosAngle ) * 180.0f / std::numbers::pi_v<float>;
+			a_flight.maxVelocityDeviationDeg = std::max( a_flight.maxVelocityDeviationDeg, deviation );
+			a_flight.sumVelocityDeviationDeg += deviation;
+			++a_flight.velocityChecks;
+		}
+		a_flight.lastVelocity = runtimeData.linearVelocity;
 
 		// Closest approach of the segment travelled this frame to the target's current aim point
 		if( auto targetPtr = a_flight.target.get() )
@@ -207,7 +242,13 @@ private:
 			// often never seen. Passing within the target's body while disappearing counts as a hit.
 			float hitRadius = std::max( a_flight.targetRadius * 0.6f, 12.0f );
 			bool vanished = std::string_view( a_reason ) == "projectile gone";
-			const char* verdict = hitTarget ? "HIT" :
+
+			// Damage is the ground truth: positions can be misleading, lost health is not
+			float healthAfter = GetHealth( targetPtr.get() );
+			bool damaged = a_flight.targetHealthBefore >= 0.0f && healthAfter >= 0.0f && healthAfter < a_flight.targetHealthBefore - 0.01f;
+			bool killed = targetPtr->IsDead();
+
+			const char* verdict = ( damaged || killed ) ? "HIT (damage confirmed)" : hitTarget ? "HIT" :
 				( vanished && a_flight.closestApproach <= hitRadius ) ? "PROBABLE HIT" :
 				a_flight.closestApproach <= hitRadius ? "GRAZE" : "MISS";
 
@@ -224,6 +265,13 @@ private:
 			REX::INFO(
 				"[ArrowDiag]   error split: ballistic (arrow vs predicted point)={:.1f}u [dz={:+.1f}] | target deviation (actual vs predicted)={:.1f}u [dz={:+.1f}]",
 				ballistic.Length(), ballistic.z, deviation.Length(), deviation.z );
+
+			REX::INFO(
+				"[ArrowDiag]   truth: health {:.1f} -> {:.1f} killed={} | engine: location vs model max {:.1f}u, path vs set velocity avg {:.2f} deg max {:.2f} deg over {} frames",
+				a_flight.targetHealthBefore, healthAfter, killed,
+				a_flight.maxLocationTo3D,
+				a_flight.velocityChecks ? a_flight.sumVelocityDeviationDeg / (float)a_flight.velocityChecks : 0.0f,
+				a_flight.maxVelocityDeviationDeg, a_flight.velocityChecks );
 		}
 		else
 		{
