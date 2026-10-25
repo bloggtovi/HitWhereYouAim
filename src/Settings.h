@@ -51,9 +51,36 @@ struct Settings
 		it->second = a_binding;
 	}
 
+	// Write the registered default of every binding so that keys missing from the INI files
+	// never leave a setting uninitialized.
+	void ApplyDefaults()
+	{
+		for( const auto& [key, binding] : _settings )
+		{
+			switch( binding.type )
+			{
+			case BindingType::kBoolean:
+				*reinterpret_cast<bool*>( binding.pData ) = std::get<bool>( binding.defaults );
+				break;
+			case BindingType::kInteger:
+				*reinterpret_cast<int32_t*>( binding.pData ) = std::get<int32_t>( binding.defaults );
+				break;
+			case BindingType::kFloat:
+				*reinterpret_cast<float*>( binding.pData ) = std::get<float>( binding.defaults );
+				break;
+			case BindingType::kDouble:
+				*reinterpret_cast<double*>( binding.pData ) = std::get<double>( binding.defaults );
+				break;
+			case BindingType::kString:
+				*reinterpret_cast<std::string*>( binding.pData ) = std::get<std::string>( binding.defaults );
+				break;
+			}
+		}
+	}
+
 	void Load( CSimpleIniA& a_ini )
 	{
-		for( auto pair : _settings )
+		for( const auto& pair : _settings )
 		{
 			auto& binding = pair.second;
 			if( a_ini.KeyExists( binding.section.data(), binding.key.data() ) )

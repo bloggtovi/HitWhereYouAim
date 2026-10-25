@@ -112,11 +112,11 @@ static RE::NiPoint3 ClampVectorFromOrigin( const RE::NiPoint3& a_origin, const R
 {
 	RE::NiPoint3 delta = a_target - a_origin;
 	float length = delta.Length();
-	RE::NiPoint3 direction = delta / length;
 
 	if( length == 0 || length < a_maxLength )
 		return a_target;
 
+	RE::NiPoint3 direction = delta / length;
 	return a_origin + direction * a_maxLength;
 }
 
@@ -291,7 +291,11 @@ static RE::TESObjectREFR* GetScreenRaycastTarget( uint32_t a_x, uint32_t a_y, ui
 	RE::COL_LAYER a_collisionLayer, RE::NiPoint3* out_hitLocation = nullptr, RE::bhkPickData* out_pickData = nullptr, float a_maxDistance = 10000.0f )
 {
 	auto camera = RE::Main::WorldRootCamera();
-	auto screenSize = RE::BSGraphics::Renderer::GetSingleton()->GetScreenSize();
+	auto renderer = RE::BSGraphics::Renderer::GetSingleton();
+	if( !camera || !renderer )
+		return nullptr;
+
+	auto screenSize = renderer->GetScreenSize();
 
 	RE::NiPoint3 origin, direction;
 	camera->WindowPointToRay( a_x, a_y, origin, direction, (float)screenSize.width, (float)screenSize.height );
@@ -914,6 +918,8 @@ static bool SetCrosshairToWorldPosition( const RE::NiPoint3& a_world )
 {
 	auto* ui = RE::UI::GetSingleton();
 	auto camera = RE::Main::WorldRootCamera();
+	if( !ui || !camera )
+		return false;
 
 	float normalizedX;
 	float normalizedY;

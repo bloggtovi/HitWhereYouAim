@@ -11,7 +11,10 @@
       "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
       "cacheVariables": {
         "VCPKG_TARGET_TRIPLET": "x64-windows-static-md",
-        "CMAKE_CONFIGURATION_TYPES": "Debug;Release"
+        "CMAKE_CONFIGURATION_TYPES": "Debug;Release",
+        "ENABLE_SKYRIM_SE": "ON",
+        "ENABLE_SKYRIM_AE": "ON",
+        "ENABLE_SKYRIM_VR": "OFF"
       }
     },
 	{

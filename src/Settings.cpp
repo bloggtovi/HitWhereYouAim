@@ -3,12 +3,6 @@
 
 void Settings::Load()
 {
-	CSimpleIniA iniDefault;
-	iniDefault.SetUnicode();
-
-	if( iniDefault.LoadFile( L"Data/MCM/Config/HitWhereYouAim/settings.ini" ) != SI_OK )
-		REX::FAIL( "Data/MCM/Config/HitWhereYouAim/settings.ini is missing!" );
-
 	auto settings = GetSingleton();
 	settings->RegisterBinding( { &bEnabled,					Settings::BindingType::kBoolean,	"Main", "bEnabled",					true } );
 	settings->RegisterBinding( { &bEnabledPitchCorrection,	Settings::BindingType::kBoolean,	"Main", "bEnabledPitchCorrection",	true } );
@@ -38,7 +32,16 @@ void Settings::Load()
 	settings->RegisterBinding( { &bShowCrosshairRayImpact,	Settings::BindingType::kBoolean,	"Debug", "bShowCrosshairRayImpact",		false } );
 	settings->RegisterBinding( { &bShowLastProjectilePath,	Settings::BindingType::kBoolean,	"Debug", "bShowLastProjectilePath",		false } );
 	settings->RegisterBinding( { &bEnabledTargetPrediction,	Settings::BindingType::kBoolean,	"Debug", "bEnabledTargetPrediction",	false } );
-	settings->Load( iniDefault );
+	settings->ApplyDefaults();
+
+	// A missing default INI used to abort the game on startup. Fall back to the built-in
+	// defaults instead so the plugin still works without the MCM files installed.
+	CSimpleIniA iniDefault;
+	iniDefault.SetUnicode();
+	if( iniDefault.LoadFile( L"Data/MCM/Config/HitWhereYouAim/settings.ini" ) == SI_OK )
+		settings->Load( iniDefault );
+	else
+		REX::WARN( "Data/MCM/Config/HitWhereYouAim/settings.ini is missing, using built-in defaults" );
 
 	CSimpleIniA iniUser;
 	iniUser.SetUnicode();

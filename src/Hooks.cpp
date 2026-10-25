@@ -82,7 +82,10 @@ void Hooks::PlayerProjectileCalculateLaunchAngleHook::CalculatePlayerProjectileL
 		return;
 
 	auto playerCamera		= RE::PlayerCamera::GetSingleton();
-	auto cameraState		= playerCamera->currentState.get();
+	auto cameraState		= playerCamera ? playerCamera->currentState.get() : nullptr;
+	if( !cameraState || !RE::Main::WorldRootCamera() )
+		return;
+
 	auto thirdPersonState	= skyrim_cast<RE::ThirdPersonState*>( cameraState );
 	bool isFreeRotation		= thirdPersonState && thirdPersonState->GetFreeRotationMode();
 	if( Settings::bEnabled &&
@@ -242,9 +245,10 @@ float Hooks::ConcentrationSpellAngleHook::SetAimPitch( RE::Projectile* a_project
 	if( Settings::bEnabled && shooter && shooter.native_handle() == 0x100000 && playerPitch != FLT_MAX )
 	{
 		auto cameraState = RE::PlayerCamera::GetSingleton()->currentState.get();
-		if( cameraState->id == RE::CameraState::kFirstPerson ||
+		if( cameraState && (
+			cameraState->id == RE::CameraState::kFirstPerson ||
 			cameraState->id == RE::CameraState::kThirdPerson ||
-			cameraState->id == RE::CameraState::kMount )
+			cameraState->id == RE::CameraState::kMount ) )
 		{
 			return func( a_projectile, playerPitch );
 		}
@@ -260,11 +264,20 @@ float Hooks::ConcentrationSpellAngleHook::SetAimYaw( RE::Projectile* a_projectil
 	if( Settings::bEnabled && shooter && shooter.native_handle() == 0x100000 )
 	{
 		auto cameraState = RE::PlayerCamera::GetSingleton()->currentState.get();
-		if( cameraState->id == RE::CameraState::kFirstPerson ||
+		auto shooterRef = shooter.get();
+		auto actor = shooterRef ? shooterRef->As<RE::Actor>() : nullptr;
+		auto caster = actor ? actor->GetMagicCaster( runtimeData.castingSource ) : nullptr;
+		auto magicNode = caster ? caster->GetMagicNode() : nullptr;
+		auto camera = RE::Main::WorldRootCamera();
+
+		// Invalidate so SetAimPitch never reuses an angle computed for an earlier frame
+		playerPitch = playerYaw = FLT_MAX;
+
+		if( cameraState && magicNode && camera && (
+			cameraState->id == RE::CameraState::kFirstPerson ||
 			cameraState->id == RE::CameraState::kThirdPerson ||
-			cameraState->id == RE::CameraState::kMount )
+			cameraState->id == RE::CameraState::kMount ) )
 		{
-			auto actor = shooter.get()->As<RE::Actor>();
 			RE::NiPoint3 hitLocation;
 			RE::bhkPickData pickData;
 			GetCrosshairRaycastTarget(
@@ -273,20 +286,17 @@ float Hooks::ConcentrationSpellAngleHook::SetAimYaw( RE::Projectile* a_projectil
 				&hitLocation,
 				&pickData
 			);
-			auto camera = RE::Main::WorldRootCamera();
-			auto origin = actor->GetMagicCaster( runtimeData.castingSource )->GetMagicNode()->world.translate;
+			auto origin = magicNode->world.translate;
 			auto rayEnd = ((RE::NiPoint3&)(pickData.rayInput.to.quad.m128_f32) / havokScaling);
 			auto impactDepth = GetImpactDistanceAheadOfProjectileOrigin( camera->world.translate, rayEnd, hitLocation, origin );
 
-			if( impactDepth > 0 )
+			if( impactDepth > 0 && CalculateProjectileAngles( origin, hitLocation, playerPitch, playerYaw ) &&
+				playerYaw != FLT_MAX )
 			{
-				CalculateProjectileAngles( origin, hitLocation, playerPitch, playerYaw );
 				return func( a_projectile, playerYaw );
 			}
-			else
-			{
-				playerPitch = playerYaw = FLT_MAX;
-			}
+
+			playerPitch = playerYaw = FLT_MAX;
 		}
 	}
 
@@ -298,6 +308,9 @@ float Hooks::PlayerSetAimPitchHook::PlayerGetAimPitch( RE::AIProcess* a_process,
 	float result = a_pitch;
 
 	RE::PlayerCharacter* player = RE::PlayerCharacter::GetSingleton();
+	if( !player || !RE::Main::WorldRootCamera() )
+		return result;
+
 	if( Settings::IsCrosshairImpactDebugEnabled() )
 	{
 		auto currentTimeMS = RE::BSTimer::GetSingleton()->smoothedRunTimeMS;
@@ -357,7 +370,8 @@ float Hooks::PlayerSetAimPitchHook::PlayerGetAimPitch( RE::AIProcess* a_process,
 			bool isAngleCalculated = false;
 			if( Settings::IsAutomaticPitchEnabled() )
 			{
-				auto projectile			= player->GetCurrentAmmo()->GetRuntimeData().data.projectile;
+				auto ammo				= player->GetCurrentAmmo();
+				auto projectile			= ammo ? ammo->GetRuntimeData().data.projectile : nullptr;
 				auto projectileSpeed	= projectile ? projectile->data.speed : 0;
 				auto projectileGravity	= projectile ? projectile->data.gravity : 0;
 				isAngleCalculated = SolveBallisticIntercept( 
@@ -431,7 +445,9 @@ float Hooks::PlayerSetAimPitchHook::PlayerGetAimPitch( RE::AIProcess* a_process,
 		}
 		else
 		{
-			currentPitch = 0; // Reset when not firing
+			// Reset when not firing. Start from the game's pitch so the next draw eases in from the
+			// current pose instead of snapping to level first.
+			currentPitch = a_pitch;
 			pitchVelocity = 0;
 		}
 	}
@@ -449,7 +465,7 @@ void Hooks::ProjectileInitHook::OverrideProjectileInit( RE::Projectile* a_this, 
 			// Replace with HWYA angle
 			auto player = RE::PlayerCharacter::GetSingleton();
 			auto pcCamera = RE::PlayerCamera::GetSingleton();
-			auto cameraState = pcCamera->currentState.get();
+			auto cameraState = pcCamera ? pcCamera->currentState.get() : nullptr;
 			if( cameraState && cameraState->id == RE::CameraState::kMount )
 			{
 				auto biped = player->GetCurrentBiped();
@@ -458,12 +474,14 @@ void Hooks::ProjectileInitHook::OverrideProjectileInit( RE::Projectile* a_this, 
 					player->AsActorState()->GetAttackState() <= RE::ATTACK_STATE_ENUM::kBowReleased )
 				{
 					auto process = player->GetActorRuntimeData().currentProcess;
-					auto fireNode = process->GetWeaponNode( biped );
+					auto fireNode = process ? process->GetWeaponNode( biped ) : nullptr;
 
-					auto firePosition = fireNode->world.translate;
-					auto fireDirection = fireNode->world.rotate * RE::NiPoint3( 0, 1, 0 );
-
-					fireDirection.Unitize();
+					RE::NiPoint3 fireDirection{ 0, 0, 0 };
+					if( fireNode )
+					{
+						fireDirection = fireNode->world.rotate * RE::NiPoint3( 0, 1, 0 );
+						fireDirection.Unitize();
+					}
 
 					float horizontalSquared =
 						fireDirection.x * fireDirection.x +

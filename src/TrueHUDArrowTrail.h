@@ -28,6 +28,10 @@ public:
 
 	static void BeginArrow( RE::Projectile* a_projectile )
 	{
+		// Nothing to record when the trail is off or TrueHUD is not installed
+		if( !enabled || !trueHUD )
+			return;
+
 		std::scoped_lock lock( trailMutex );
 
 		projectileHandle.reset();

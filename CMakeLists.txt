@@ -9,7 +9,7 @@ endif()
 message(STATUS "vcpkg overlay ports: ${VCPKG_OVERLAY_PORTS}")
 
 set(PLUGIN_NAME "HitWhereYouAim")
-set(PLUGIN_VERSION "1.0.0")
+set(PLUGIN_VERSION "1.1.0")
 set(PLUGIN_AUTHOR "Tossapon")
 set(PLUGIN_DESCRIPTION "A crosshair aim correction plugin")
 
@@ -39,6 +39,8 @@ if(NOT EXISTS "${COMMONLIB_PATH}/CMakeLists.txt")
 endif()
 
 set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
+# PCH.h uses Trampoline::allocate(Xbyak::CodeGenerator&), which CommonLib only declares with this on
+set(SKSE_SUPPORT_XBYAK ON CACHE BOOL "" FORCE)
 add_subdirectory("${COMMONLIB_PATH}" "${CMAKE_BINARY_DIR}/CommonLib")
 
 find_package(commonlib-shared CONFIG REQUIRED)
@@ -181,10 +183,18 @@ if(COPY_BUILD)
 	else()
 		foreach(TARGET_DIR IN LISTS SKYRIM_PLUGIN_TARGETS)
 			add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-				COMMAND ${CMAKE_COMMAND} -E make_directory "${TARGET_DIR}/SKSE/Plugins/"
-				COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:${PROJECT_NAME}>" "${TARGET_DIR}/SKSE/Plugins/"
-				COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_PDB_FILE:${PROJECT_NAME}>" "${TARGET_DIR}/SKSE/Plugins/"
+				COMMAND ${CMAKE_COMMAND} -E make_directory "${TARGET_DIR}/"
+				COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:${PROJECT_NAME}>" "${TARGET_DIR}/"
+				COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_PDB_FILE:${PROJECT_NAME}>" "${TARGET_DIR}/"
 			)
 		endforeach()
 	endif()
 endif()
+
+# Ready-to-install mod layout in <build>/package/<config>/Data, including the default MCM settings
+set(PACKAGE_DATA_DIR "${CMAKE_BINARY_DIR}/package/$<CONFIG>/Data")
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+	COMMAND ${CMAKE_COMMAND} -E make_directory "${PACKAGE_DATA_DIR}/SKSE/Plugins"
+	COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:${PROJECT_NAME}>" "${PACKAGE_DATA_DIR}/SKSE/Plugins/"
+	COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/dist/Data" "${PACKAGE_DATA_DIR}"
+)

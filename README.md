@@ -2,30 +2,58 @@
 
 Makes arrows, bolts and spells go toward the point under the crosshair.
 
-## Prerequisites
+## Requirements (in game)
+
+- Skyrim SE (1.5.97) or AE (1.6+)
+- [SKSE64](https://skse.silverlock.org/)
+- [Address Library for SKSE Plugins](https://www.nexusmods.com/skyrimspecialedition/mods/32444)
+- Optional: [TrueHUD](https://www.nexusmods.com/skyrimspecialedition/mods/62775) for the debug overlays (projectile path, crosshair impact, target prediction)
+- Optional: MCM Helper / SkyUI for in-game configuration
+
+## Installation
+
+Copy the contents of the build package (`build/package/Release/Data`, or the `HitWhereYouAim` artifact from the GitHub Actions run) into the game's `Data` folder, or install it as a mod with your mod manager:
+
+```
+Data/SKSE/Plugins/HitWhereYouAim.dll
+Data/MCM/Config/HitWhereYouAim/settings.ini
+```
+
+Settings are read from `Data/MCM/Config/HitWhereYouAim/settings.ini` and then overridden by `Data/MCM/Settings/HitWhereYouAim.ini` if present. If neither file exists the plugin falls back to built-in defaults instead of aborting the game.
+
+## Building
+
+### Prerequisites
 
 - Windows x64
 - Visual Studio 2022 with C++ desktop tools
 - CMake 3.21 or newer
 - vcpkg in `VCPKG_ROOT`
 - Git
-- CommonLibSSE-NG
 
-## Initialize
+### Initialize
 
 ```powershell
 git submodule update --init --recursive
 $env:VCPKG_ROOT = "D:/Tools/vcpkg"
 ```
 
-## Build
+### Build
 
 ```powershell
-cmake --preset vs2022-se-ae
+cmake --preset windows-vcpkg
 cmake --build --preset release
 ```
 
-## Optional deployment
+`windows-vcpkg` targets SE and AE. Use `vs2022-all` to include VR (requires the `extern/CommonLibSSE/extern/openvr` submodule).
+
+The DLL is written to `build/Release`, and a ready-to-install layout is assembled in `build/package/Release/Data`.
+
+### Continuous integration
+
+`.github/workflows/build.yml` builds the plugin on every push and uploads the mod package and PDB as workflow artifacts, so a local toolchain is not required.
+
+### Optional deployment
 
 Set `SkyrimPluginTargets` to a semicolon-separated list of `SKSE/Plugins` directories, then enable `COPY_BUILD`:
 
