@@ -152,6 +152,13 @@ public:
 		if( !a_actor || a_actor == player || a_actor->IsDead() || a_actor->IsDisabled() )
 			return false;
 
+		// Never lock onto or guide shots at other people. Multiplayer clients (SkyMP) spawn remote
+		// players as actors built on Skyrim.esm's "Player" base record (0x7), so any actor other
+		// than the local player that uses it is a human player and is excluded.
+		auto base = a_actor->GetActorBase();
+		if( base && base->GetFormID() == playerBaseFormID )
+			return false;
+
 		auto actor3D = a_actor->Get3D2();
 		if( !actor3D || actor3D->flags.any( RE::NiAVObject::Flag::kNotVisible ) )
 			return false;
@@ -603,6 +610,7 @@ private:
 			RE::SendHUDMessage::ShowHUDMessage( a_message );
 	}
 
+	static constexpr RE::FormID playerBaseFormID = 0x00000007;
 	static constexpr float meterToGameUnitLock = 1.0f / 0.0142875f;
 	static constexpr float maxPitch = 80.0f * std::numbers::pi_v<float> / 180.0f;
 

@@ -1,5 +1,16 @@
 # Cambios sobre el original (tossaponk/HitWhereYouAim @ master, v1.1)
 
+## 1.5.2: nunca contra jugadores
+El bloqueo de objetivo, el recálculo al soltar y el guiado ignoran a los personajes controlados por
+otros jugadores. Los clientes multijugador (SkyMP) crean a los jugadores remotos como actores
+basados en el registro `Player` (0x7) de Skyrim.esm. Cualquier actor distinto del jugador local con
+esa base queda excluido en `TargetLock::IsValidTarget()`, por donde pasan todas esas funciones.
+
+## 1.5.1: diagnóstico v3
+Vida del objetivo antes y después de cada flecha (impacto confirmado por daño), distancia entre
+`data.location` y el modelo 3D de la flecha, comprobación de que el motor sigue la velocidad que
+impone el guiado, y motivo exacto por el que se detiene el guiado.
+
 ## Nuevo en 1.5.0: guiado en vuelo hasta el impacto
 Los datos de la tanda 1.4.0 mostraron dos fuentes de error que ningún disparo calculado al soltar
 puede resolver:
