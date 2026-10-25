@@ -557,6 +557,16 @@ void Hooks::ProjectileInitHook::OverrideProjectileInit( RE::Projectile* a_this, 
 				auto& projectileRuntimeData = a_this->GetProjectileRuntimeData();
 				float speed = projectileRuntimeData.linearVelocity.Length();
 				float gravity = a_this->GetGravity() * GetWorldGravity();
+				float drawPower = a_this->GetPowerSpeedMult();
+
+				// A quick click releases the bow at low power, which scales the launch speed down (to
+				// about 20% at minimum draw): the arrow is slow, drops hard and can take two seconds to
+				// arrive. Fly at full draw speed instead. Damage still follows the actual draw.
+				if( Settings::bTargetLockFullSpeed && speed > 1.0f && drawPower > 0.05f && drawPower < 0.999f )
+				{
+					projectileRuntimeData.linearVelocity *= 1.0f / drawPower;
+					speed = projectileRuntimeData.linearVelocity.Length();
+				}
 
 				RE::NiPoint3 targetVelocity{ 0, 0, 0 };
 				lockedTarget->GetLinearVelocity( targetVelocity );
@@ -569,13 +579,13 @@ void Hooks::ProjectileInitHook::OverrideProjectileInit( RE::Projectile* a_this, 
 					solvedForLock = SetProjectileAngle( a_this, pitch, yaw );
 				}
 
-				ProjectileDiagnostics::Begin( a_this, lockedTarget, lockedAimPoint, targetVelocity, speed, gravity, solvedForLock );
+				ProjectileDiagnostics::Begin( a_this, lockedTarget, lockedAimPoint, targetVelocity, speed, gravity, drawPower, solvedForLock );
 			}
 			else if( !a_this->IsFlameProjectile() && !a_this->IsBeamProjectile() )
 			{
 				auto& projectileRuntimeData = a_this->GetProjectileRuntimeData();
 				ProjectileDiagnostics::Begin( a_this, nullptr, RE::NiPoint3::Zero(), RE::NiPoint3::Zero(),
-					projectileRuntimeData.linearVelocity.Length(), a_this->GetGravity() * GetWorldGravity(), false );
+					projectileRuntimeData.linearVelocity.Length(), a_this->GetGravity() * GetWorldGravity(), a_this->GetPowerSpeedMult(), false );
 			}
 
 			// Inheriting the player's velocity would offset a shot solved for a locked target

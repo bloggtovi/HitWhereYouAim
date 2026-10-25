@@ -1,5 +1,13 @@
 # Cambios sobre el original (tossaponk/HitWhereYouAim @ master, v1.1)
 
+## Nuevo en 1.4.0: calibración con datos reales
+Análisis de 42 disparos registrados en partida. Solo 3 de los 32 fallos con objetivo fijado podían
+deberse al cálculo. El factor dominante era la potencia: 18 de 42 disparos salieron por debajo del
+35 % (clic rápido), con flechas lentas que tardaban 1-2 s en llegar o que no podían alcanzar el
+objetivo.
+- **Velocidad completa con objetivo fijado** (`bTargetLockFullSpeed`, activado): la flecha vuela a la velocidad de un arco tensado del todo aunque se suelte enseguida. El daño sigue dependiendo del tensado real.
+- **Diagnóstico v2:** veredicto por flecha (HIT / PROBABLE HIT / GRAZE / MISS) y separación del error en balístico (la flecha frente al punto previsto) y desviación del objetivo. La muestra de salida se excluye del ajuste, porque su marca de tiempo no es exacta y sesgaba la gravedad medida.
+
 ## Nuevo en 1.3.0: precisión del impacto
 - **Recálculo final con valores reales:** el disparo a un objetivo fijado se recalcula en `ProjectileInitHook`, cuando el motor ya fijó la velocidad inicial (que incluye la potencia del tensado y los multiplicadores de arma y perks) y el punto de salida reales. Antes solo se estimaban: con un 5 % de error en la velocidad, a 100 m la flecha cae casi un metro por debajo.
 - Al objetivo fijado ya no se le aplican la penetración de 20 cm ni el límite de 100 m del modo normal.

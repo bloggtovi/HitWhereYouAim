@@ -36,6 +36,7 @@ void Settings::Load()
 	settings->RegisterBinding( { &fTargetLockRotationSpeed,	Settings::BindingType::kFloat,		"TargetLock", "fTargetLockRotationSpeed",	0.0f } );	// Instant
 	settings->RegisterBinding( { &fTargetLockLoseSightTime,	Settings::BindingType::kFloat,		"TargetLock", "fTargetLockLoseSightTime",	2.0f } );
 	settings->RegisterBinding( { &fTargetLockReleaseDelay,	Settings::BindingType::kFloat,		"TargetLock", "fTargetLockReleaseDelay",	0.5f } );
+	settings->RegisterBinding( { &bTargetLockFullSpeed,		Settings::BindingType::kBoolean,	"TargetLock", "bTargetLockFullSpeed",		true } );
 	settings->RegisterBinding( { &bTargetLockNotification,	Settings::BindingType::kBoolean,	"TargetLock", "bTargetLockNotification",	false } );
 
 	settings->RegisterBinding( { &bEnableLogging,			Settings::BindingType::kBoolean,	"Debug", "bEnableLogging",				false } );
