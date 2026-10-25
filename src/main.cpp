@@ -5,6 +5,7 @@
 #include "HitWhereYouAimAPI.h"
 #include "TrueHUDArrowTrail.h"
 #include "CandidateBoundsDebug.h"
+#include "TargetLock.h"
 
 float crosshairOriginalX = FLT_MAX;
 float crosshairOriginalY = FLT_MAX;
@@ -53,6 +54,7 @@ namespace
 			{
 			case RE::BGSActorCellEvent::CellFlag::kEnter:
 				TrueHUDArrowTrail::Stop();
+				TargetLock::Unlock();
 				break;
 			}
 
@@ -68,12 +70,17 @@ namespace
 			REX::INFO( "{} {} loaded", Version::PROJECT.data(), Version::NAME.data());
 			RE::PlayerCharacter::GetSingleton()->AsBGSActorCellEventSource()->AddEventSink( CellChangeHandler::GetSingleton() );
 			break;
+		case SKSE::MessagingInterface::kInputLoaded:
+			TargetLock::RegisterInputSink();
+			break;
 		case SKSE::MessagingInterface::kPreLoadGame:
 			TrueHUDArrowTrail::Stop();
+			TargetLock::Unlock();
 			break;
 		case SKSE::MessagingInterface::kPostLoad:
 			TrueHUDArrowTrail::Install();
 			CandidateBoundsDebug::Install();
+			TargetLock::Install();
 			break;
 		case SKSE::MessagingInterface::kPostPostLoad:
 			// TDM Compatibility hook

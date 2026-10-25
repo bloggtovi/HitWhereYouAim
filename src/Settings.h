@@ -141,6 +141,16 @@ struct Settings
 	static inline float		fMaxPitchAdjustmentSpeed;
 	static inline float		fMountedYawTolerance;
 
+	// Target lock
+	static inline bool		bTargetLockEnabled;
+	static inline uint32_t	iTargetLockKey;
+	static inline float		fTargetLockMaxDistance;
+	static inline float		fTargetLockWindowWidth;
+	static inline float		fTargetLockWindowHeight;
+	static inline float		fTargetLockRotationSpeed;
+	static inline float		fTargetLockLoseSightTime;
+	static inline bool		bTargetLockNotification;
+
 	// Debug
 	static inline bool		bEnableLogging;
 	static inline bool		bShowTargetPredictionInfo;

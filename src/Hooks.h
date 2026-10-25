@@ -5,6 +5,7 @@
 #include "Settings.h"
 #include "TrueHUDArrowTrail.h"
 #include "CandidateBoundsDebug.h"
+#include "TargetLock.h"
 
 struct CrosshairRaycastCache
 {
@@ -181,6 +182,7 @@ namespace Hooks
 		static void thunk( RE::PlayerCharacter* a_this, float a_delta )
 		{
 			func( a_this, a_delta );
+			TargetLock::Update( a_delta );
 			TrueHUDArrowTrail::Update();
 			CandidateBoundsDebug::Update();
 		}

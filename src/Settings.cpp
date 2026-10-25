@@ -27,6 +27,15 @@ void Settings::Load()
 	settings->RegisterBinding( { &fMaxPitchAdjustmentSpeed,	Settings::BindingType::kFloat,		"AngleCorrection", "fMaxPitchAdjustmentSpeed",	360.0f } );
 	settings->RegisterBinding( { &fMountedYawTolerance,		Settings::BindingType::kFloat,		"AngleCorrection", "fMountedYawTolerance",		15.0f } );
 
+	settings->RegisterBinding( { &bTargetLockEnabled,		Settings::BindingType::kBoolean,	"TargetLock", "bTargetLockEnabled",			true } );
+	settings->RegisterBinding( { &iTargetLockKey,			Settings::BindingType::kInteger,	"TargetLock", "iTargetLockKey",				47 } );		// V
+	settings->RegisterBinding( { &fTargetLockMaxDistance,	Settings::BindingType::kFloat,		"TargetLock", "fTargetLockMaxDistance",		60.0f } );
+	settings->RegisterBinding( { &fTargetLockWindowWidth,	Settings::BindingType::kFloat,		"TargetLock", "fTargetLockWindowWidth",		0.6f } );
+	settings->RegisterBinding( { &fTargetLockWindowHeight,	Settings::BindingType::kFloat,		"TargetLock", "fTargetLockWindowHeight",	0.6f } );
+	settings->RegisterBinding( { &fTargetLockRotationSpeed,	Settings::BindingType::kFloat,		"TargetLock", "fTargetLockRotationSpeed",	12.0f } );
+	settings->RegisterBinding( { &fTargetLockLoseSightTime,	Settings::BindingType::kFloat,		"TargetLock", "fTargetLockLoseSightTime",	2.0f } );
+	settings->RegisterBinding( { &bTargetLockNotification,	Settings::BindingType::kBoolean,	"TargetLock", "bTargetLockNotification",	true } );
+
 	settings->RegisterBinding( { &bEnableLogging,			Settings::BindingType::kBoolean,	"Debug", "bEnableLogging",				false } );
 	settings->RegisterBinding( { &bShowTargetPredictionInfo,Settings::BindingType::kBoolean,	"Debug", "bShowTargetPredictionInfo",	false } );
 	settings->RegisterBinding( { &bShowCrosshairRayImpact,	Settings::BindingType::kBoolean,	"Debug", "bShowCrosshairRayImpact",		false } );
